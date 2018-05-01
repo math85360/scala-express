@@ -19,6 +19,7 @@ val compilerOptions = Seq(
 )
 
 val catsVersion = "1.1.0"
+val fastparseVersion = "0.4.4"
 val shapelessVersion = "2.3.3"
 val refinedVersion = "0.9.0"
 val paradiseVersion = "2.1.1"
@@ -107,8 +108,8 @@ lazy val root = project.in(file("."))
     initialCommands in console :=
       """
         |import com.iz2use.express._
-        |import com.iz2use.step._
-        |import com.iz2use.ifc._
+        |import com.iz2use.express.step._
+        |import com.iz2use.express.ifc._
       """.stripMargin
   )
   .aggregate(aggregatedProjects: _*)
@@ -119,6 +120,8 @@ lazy val coreBase = expressCrossModule("core")
       "org.typelevel" %%% "cats-core" % catsVersion,
       "com.chuusai" %%% "shapeless" % shapelessVersion,
       "com.chuusai" %%% "shapeless" % shapelessVersion % Test,
+      "com.lihaoyi" %%% "fastparse" % fastparseVersion,
+      "com.lihaoyi" %%% "fastparse" % fastparseVersion % Test,
       "eu.timepit" %%% "refined" % refinedVersion,
       "eu.timepit" %%% "refined-scalacheck" % refinedVersion % Test
     )
