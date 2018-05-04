@@ -4,6 +4,7 @@ import com.iz2use.express.ast
 import scala.language.postfixOps
 import IgnoringParts._
 import fastparse.noApi._
+import com.iz2use.express.ast.BuiltInFunction.Acos
 
 trait Expression extends Literal {
   private[parser] val actual_parameter_list: P[Seq[ast.Expression]] = P(("(" ~ parameter.nonEmptyList ~ ")"))
@@ -11,37 +12,69 @@ trait Expression extends Literal {
     "+".to(ast.AdditionOp) | "-".to(ast.SubtractionOp) |
       OR.to(ast.OrOp) | XOR.to(ast.XorOp))
   private val aggregate_initializer: P[ast.AggregateInitializer] = P(("[" ~ element.nonEmptyList ~ "]")
-      .map(ast.AggregateInitializer.apply))
+    .map(ast.AggregateInitializer.apply))
   private val aggregate_source = P(simple_expression)
-  private[parser] val attribute_qualifier: P[ast.AttributeQualifier] = P("." ~ attribute_ref)
+  private[parser] val attribute_qualifier: P[ast.AttributeQualifier] = P("." ~ attribute_ref.map(_.name))
     .map(ast.AttributeQualifier)
   private[parser] val bound_1 = P(numeric_expression)
   private[parser] val bound_2 = P(numeric_expression)
   private[parser] val bound_spec = P("[" ~ bound_1 ~ ":" ~ bound_2 ~ "]")
-    .map(ast.Bounds.tupled.apply)
-  private val built_in_constant = P((CONST_E | PI | SELF | "?").!
-    .map(ast.BuiltInConstant.apply))
-  private val built_in_function: P[ast.BuiltInFunction] = P((ABS | ACOS | ASIN | ATAN | BLENGTH | COS | EXISTS | EXP | FORMAT | HIBOUND | HIINDEX | LENGTH | LOBOUND | LOINDEX | LOG | LOG2 | LOG10 | NVL | ODD | ROLESOF | SIN | SIZEOF | SQRT | TAN | TYPEOF | USEDIN | VALUE | VALUE_IN | VALUE_UNIQUE).!
-    .map(ast.BuiltInFunction.apply))
-  private val constant_factor: P[ast.ConstantFactor] = P(built_in_constant | constant_ref)
+    .map(ast.Bounds.tupled)
+  private val built_in_constant = P(
+    CONST_E.to(ast.BuiltInConstant.E) |
+      PI.to(ast.BuiltInConstant.PI) |
+      SELF.to(ast.BuiltInConstant.Self) |
+      "?".to(ast.BuiltInConstant.Unknown))
+
+  private val built_in_function: P[ast.BuiltInFunction] = P(
+    ABS.to(ast.BuiltInFunction.Abs) |
+      ACOS.to(ast.BuiltInFunction.Acos) |
+      ASIN.to(ast.BuiltInFunction.Asin) |
+      ATAN.to(ast.BuiltInFunction.Atan) |
+      BLENGTH.to(ast.BuiltInFunction.BLength) |
+      COS.to(ast.BuiltInFunction.Cos) |
+      EXISTS.to(ast.BuiltInFunction.Exists) |
+      EXP.to(ast.BuiltInFunction.Exp) |
+      FORMAT.to(ast.BuiltInFunction.Format) |
+      HIBOUND.to(ast.BuiltInFunction.HiBound) |
+      HIINDEX.to(ast.BuiltInFunction.HiIndex) |
+      LENGTH.to(ast.BuiltInFunction.Length) |
+      LOBOUND.to(ast.BuiltInFunction.LoBound) |
+      LOINDEX.to(ast.BuiltInFunction.LoIndex) |
+      LOG.to(ast.BuiltInFunction.Log) |
+      LOG2.to(ast.BuiltInFunction.Log2) |
+      LOG10.to(ast.BuiltInFunction.Log10) |
+      NVL.to(ast.BuiltInFunction.Nvl) |
+      ODD.to(ast.BuiltInFunction.Odd) |
+      ROLESOF.to(ast.BuiltInFunction.RolesOf) |
+      SIN.to(ast.BuiltInFunction.Sin) |
+      SIZEOF.to(ast.BuiltInFunction.SizeOf) |
+      SQRT.to(ast.BuiltInFunction.Sqrt) |
+      TAN.to(ast.BuiltInFunction.Tan) |
+      TYPEOF.to(ast.BuiltInFunction.TypeOf) |
+      USEDIN.to(ast.BuiltInFunction.UsedIn) |
+      VALUE.to(ast.BuiltInFunction.Value) |
+      VALUE_IN.to(ast.BuiltInFunction.ValueIn) |
+      VALUE_UNIQUE.to(ast.BuiltInFunction.ValueUnique))
+  private val constant_factor: P[ast.ConstantFactor] = P(built_in_constant | constant_ref.map(_.name).map(ast.UserDefinedConstant))
   private val element: P[ast.Expression] = P(expression ~ (":".to(ast.RepetitionOp) ~ repetition).?)
-  private val entity_constructor: P[ast.EntityConstructor] = P((entity_ref ~ "(" ~ expression.nonEmptyList.? ~ ")")
-    .map(ast.EntityConstructor.tupled.apply))
-  private val enumeration_reference: P[ast.EnumerationReference] = P(((type_ref ~ ".").? ~ enumeration_ref)
-    .map(ast.EnumerationReference.tupled.apply))
+  private val entity_constructor: P[ast.EntityConstructor] = P((entity_ref.map(_.name) ~ "(" ~ expression.nonEmptyList.? ~ ")")
+    .map(ast.EntityConstructor.tupled))
+  private val enumeration_reference: P[ast.EnumerationReference] = P(((type_ref.map(_.name) ~ ".").? ~ enumeration_ref.map(_.name))
+    .map(ast.EnumerationReference.tupled))
   private[parser] val expression: P[ast.Expression] = P(simple_expression ~ (rel_op_extended ~ simple_expression).?)
   private val factor: P[ast.Expression] = P(simple_factor ~ ("**".to(ast.PowerOp) ~ simple_factor).?)
-  private val function_call: P[ast.FunctionCall] = P((built_in_function | function_ref) ~ actual_parameter_list.?)
-    .map(ast.FunctionCall.tupled.apply)
-  private[parser] val group_qualifier: P[ast.GroupQualifier] = P("\\" ~ entity_ref)
-    .map(ast.GroupQualifier.apply)
+  private val function_call: P[ast.FunctionCall] = P((built_in_function | function_ref.map(_.name).map(ast.UserDefinedFunction)) ~ actual_parameter_list.?)
+    .map(ast.FunctionCall.tupled)
+  private[parser] val group_qualifier: P[ast.GroupQualifier] = P("\\" ~ entity_ref.map(_.name))
+    .map(ast.GroupQualifier)
   private val index_qualifier: P[ast.IndexQualifier] = P("[" ~ index_1 ~ (":" ~ index_2).? ~ "]")
-    .map(ast.IndexQualifier.tupled.apply)
+    .map(ast.IndexQualifier.tupled)
   private val index = P(numeric_expression)
   private val index_1 = P(index)
   private val index_2 = P(index)
   private val interval: P[ast.Interval] = P("{" ~ interval_low ~ interval_op ~ interval_item ~ interval_op ~ interval_high ~ "}")
-    .map(ast.Interval.tupled.apply)
+    .map(ast.Interval.tupled)
   private val interval_high = P(simple_expression)
   private val interval_item = P(simple_expression)
   private val interval_low = P(simple_expression)
@@ -55,10 +88,18 @@ trait Expression extends Literal {
   private val parameter = P(expression)
   private val population = P(entity_ref)
   private val primary: P[ast.Primary] = P(literal | (qualifiable_factor ~ qualifier.rep).map(ast.QualifiedApply.tupled))
-  private val qualifiable_factor: P[ast.QualifiableFactor] = P(attribute_ref | constant_factor | function_call | general_ref | population)
+  private val qualifiable_factor: P[ast.QualifiableFactor] = P(
+      attribute_ref.map(r => ast.UserDefinedFactor(r.name)) | 
+      constant_factor.map({
+        case c : ast.BuiltInConstant => c
+        case ast.UserDefinedConstant(name) => ast.UserDefinedFactor(name)
+      }) | 
+      function_call | 
+      general_ref.map(r => ast.UserDefinedFactor(r.name)) | 
+      population.map(r => ast.UserDefinedFactor(r.name)))
   private[parser] val qualifier: P[ast.Qualifier] = P(attribute_qualifier | group_qualifier | index_qualifier)
-  private val query_expression: P[ast.QueryExpression] = P(QUERY ~ "(" ~ variable_id ~ "<*" ~ aggregate_source ~ "|" ~ logical_expression ~ ")")
-    .map(ast.QueryExpression.tupled.apply)
+  private val query_expression: P[ast.QueryExpression] = P(QUERY ~ "(" ~ variable_id.map(_.name) ~ "<*" ~ aggregate_source ~ "|" ~ logical_expression ~ ")")
+    .map(ast.QueryExpression.tupled)
   private val rel_op = P(
     "<".to(ast.LT) | ">".to(ast.GT) |
       "<=".to(ast.LE) | ">=".to(ast.GE) |

@@ -12,19 +12,47 @@ package object ast {
     implicit def fromA[A](value: A): |[A, PipeNil] = |(value, PipeNil)
     implicit def fromB[B <: Alternative](value: B): |[PipeNil, B] = |(PipeNil, value)
   }
-  sealed trait Node
-  case class Schema(id: String, version: Option[StringLiteral], body: Seq[SchemaBody]) extends Node
-  sealed trait SchemaBody
-  sealed trait InterfaceSpecification extends SchemaBody
-  case class ReferenceClause(schemaRef: String, imports: Seq[NamedTypeOrRename]) extends Node with InterfaceSpecification
   
-  sealed trait AlgorithmHeadPart
-  case class UseClause(schemaRef: String, imports: Seq[NamedTypeOrRename]) extends Node with InterfaceSpecification
-  case class ConstantDeclaration(constantId: String, tpe: InstantiableType, expression: Expression) extends Node with SchemaBody with AlgorithmHeadPart
-  case class Declaration() extends Node with SchemaBody with AlgorithmHeadPart
-  case class Rule(ruleId: String, entityRefs: Seq[EntityRef], header: Seq[AlgorithmHeadPart], body: Seq[Statement], whereClause: WhereClause) extends Node with SchemaBody
-  case class LocalDeclaration(variableNames: Seq[String], parameter: ParameterType, defaultExpression: Option[Expression]) extends AlgorithmHeadPart
-  sealed trait Statement
+  
+  
   
 
+  
+  sealed trait Statement
+  case class AliasStatement(name: String, source: String, path: Seq[ast.Qualifier], body: Seq[Statement]) extends Statement
+  case class AssignmentStatement(target: String, path: Seq[ast.Qualifier], expression: Expression) extends Statement
+  case class Case(conditions: Seq[Expression], body: Statement)
+  case class CaseStatement(selector: Expression, cases: Seq[Case], otherwise: Option[Statement]) extends Statement
+  case class CompoundStatement(body: Seq[Statement]) extends Statement
+  case object EscapeStatement extends Statement
+  case class IfStatement(condition: LogicalExpression, ifPass: Seq[Statement], ifFailed: Seq[Statement]) extends Statement
+  case object NullStatement extends Statement
+  case class ProcedureCallStatement(procedure: Procedure, parameterList: Seq[Expression]) extends Statement
+  case class IncrementControl(target: String, from: NumericExpression, to: NumericExpression, increment: Option[NumericExpression])
+  case class RepeatStatement(incrementControl: Option[IncrementControl], whileControl: Option[LogicalExpression], untilControl: Option[LogicalExpression], body: Seq[Statement]) extends Statement
+  case class ReturnStatement(result: Option[Expression]) extends Statement
+  case object SkipStatement extends Statement
+  sealed trait SupertypeConstraint
+  sealed trait SubtypeConstraint
+  //case class AbstractEntityDeclaration()
+  sealed trait EntityBody
+  
+  sealed trait Attribute
+  case class ExplicitAttribute(names: AttributeName, optional: Boolean, tpe: ParameterType) 
+  case class DerivedAttribute(names: AttributeName, tpe: ParameterType, value: Expression) 
+  case class InverseAttribute(names: AttributeName, tpe: Option[InverseAggregateType], source: String, entity: Option[String], attribute: String) 
+  case class UniqueClause(name: Option[String], source: Seq[UniqueSource])
+  sealed trait UniqueSource
+  case class ReferencedAttribute(attribute: String) extends UniqueSource
+  sealed trait AttributeName
+  case class SimpleAttributeName(name: String) extends AttributeName
+  case class RedeclaredAttribute(source: QualifiedAttribute, renamed: Option[String]) extends AttributeName
+  case class InverseAggregateType(unique: Boolean, bounds: Option[Bounds])
+  case class QualifiedAttribute(group: String, attribute: String) extends UniqueSource
+  
+  
+  
+  //type ResourceRef =  ConstantRef <: BaseRef
+  //case class Ref(value: Id)
+  //case class Id(name: String)
 }

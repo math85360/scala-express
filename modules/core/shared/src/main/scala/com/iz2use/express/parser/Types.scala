@@ -21,7 +21,7 @@ trait Types extends Expression {
   private val boolean_type = P(BOOLEAN)
     .to(ast.BooleanType)
 
-  private[parser] val concrete_types: P[ast.ConcreteType] = P(aggregation_types | simple_types | type_ref)
+  private[parser] val concrete_types: P[ast.ConcreteType] = P(aggregation_types | simple_types | type_ref.map(_.name).map(ast.UserDefinedType))
 
   private val generalized_types: P[ast.GeneralizedType] = P(aggregate_type | general_aggregation_types | generic_entity_type | generic_type)
   private val general_aggregation_types: P[ast.AggregationType[ast.ParameterType]] = P(general_array_type | general_bag_type | general_list_type | general_set_type)
@@ -40,7 +40,7 @@ trait Types extends Expression {
   private val generic_type: P[ast.GenericType] = P((GENERIC ~ (":" ~ type_label).?)
     .map(ast.GenericType))
 
-  private[parser] val instantiable_type: P[ast.InstantiableType] = P(concrete_types | entity_ref)
+  private[parser] val instantiable_type: P[ast.InstantiableType] = P(concrete_types | entity_ref.map(_.name).map(ast.UserDefinedEntity))
   private val integer_type = P(INTEGER)
     .to(ast.IntegerType)
 
@@ -50,17 +50,16 @@ trait Types extends Expression {
   private val logical_type = P(LOGICAL)
     .to(ast.LogicalType)
 
-  private[parser] val named_types: P[ast.NamedType] = P(entity_ref | type_ref)
-  private[parser] val named_type_or_rename: P[ast.NamedTypeOrRename] = P((named_types ~ (AS ~ (entity_id | type_id)).?)
+  private[parser] val named_types = P(entity_ref | type_ref)
+  private[parser] val named_type_or_rename: P[ast.RenamedType] = P((named_types.map(_.name) ~ (AS ~ (entity_id | type_id).map(_.name)).?)
     .map({
-      case (namedType, None)     => namedType
-      case (namedType, Some(as)) => ast.RenamedType(namedType, as)
+      case (namedType, as) => ast.RenamedType(namedType, as.getOrElse(namedType))
     }))
 
   private val number_type = P(NUMBER)
     .to(ast.NumberType)
 
-  private[parser] val parameter_type: P[ast.ParameterType] = P(generalized_types | named_types | simple_types)
+  private[parser] val parameter_type: P[ast.ParameterType] = P(generalized_types | named_types.map(_.name).map(ast.UserDefinedEntityOrType) | simple_types)
   private val precision_spec = P(numeric_expression)
 
   private val real_type = P(REAL ~ ("(" ~ precision_spec ~ ")").?)
@@ -74,7 +73,7 @@ trait Types extends Expression {
   private val string_type = P(STRING ~ width_spec.?)
     .map(ast.StringType.apply)
 
-  private val type_label: P[String] = P(type_label_id | type_label_ref)
+  private val type_label: P[String] = P((type_label_id | type_label_ref).map(_.name))
 
   private val width = P(numeric_expression)
   private val width_spec = P("(" ~ width ~ ")" ~ FIXED.?)

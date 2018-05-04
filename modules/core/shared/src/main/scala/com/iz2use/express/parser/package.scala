@@ -51,10 +51,10 @@ package object parser extends LowerPriorityImplicit {
       case Some((op, b)) => ast.SingleOperation(a, op, b)
     }
   }
-  implicit def accSequencer[R, T <: R, V <: R] = new SeqSequencer[R, T, V]
+  /*implicit def accSequencer[R, T <: R, V <: R] = new SeqSequencer[R, T, V]
   class SeqSequencer[R, T <: R, V <: R] extends Sequencer[Seq[T], Seq[V], Seq[R]] {
     def apply(a: Seq[T], b: Seq[V]): Seq[R] = a ++ b
-  }
+  }*/
 
   //sealed trait Or[+A, +B]
   //type :+:[+A, +B] = Either[A, B]

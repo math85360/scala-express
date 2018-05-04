@@ -45,14 +45,61 @@ case object NotOp extends UnaryOp
 
 case object PowerOp extends Operator
 
-case class BuiltInFunction(name: String) extends Function
-case class BuiltInConstant(name: String) extends ConstantFactor
+sealed trait Procedure
+sealed trait BuiltInProcedure extends Procedure
+object BuiltInProcedure {
+  case object Insert extends BuiltInProcedure
+  case object Remove extends BuiltInProcedure
+}
+case class UserDefinedProcedure(name: String) extends Procedure
+sealed trait BuiltInFunction extends Function
+object BuiltInFunction {
+  case object Abs extends BuiltInFunction
+  case object Acos extends BuiltInFunction
+  case object Asin extends BuiltInFunction
+  case object Atan extends BuiltInFunction
+  case object BLength extends BuiltInFunction
+  case object Cos extends BuiltInFunction
+  case object Exists extends BuiltInFunction
+  case object Exp extends BuiltInFunction
+  case object Format extends BuiltInFunction
+  case object HiBound extends BuiltInFunction
+  case object HiIndex extends BuiltInFunction
+  case object Length extends BuiltInFunction
+  case object LoBound extends BuiltInFunction
+  case object LoIndex extends BuiltInFunction
+  case object Log extends BuiltInFunction
+  case object Log2 extends BuiltInFunction
+  case object Log10 extends BuiltInFunction
+  case object Nvl extends BuiltInFunction
+  case object Odd extends BuiltInFunction
+  case object RolesOf extends BuiltInFunction
+  case object Sin extends BuiltInFunction
+  case object SizeOf extends BuiltInFunction
+  case object Sqrt extends BuiltInFunction
+  case object Tan extends BuiltInFunction
+  case object TypeOf extends BuiltInFunction
+  case object UsedIn extends BuiltInFunction
+  case object Value extends BuiltInFunction
+  case object ValueIn extends BuiltInFunction
+  case object ValueUnique extends BuiltInFunction
+}
+case class UserDefinedFunction(name: String) extends Function
+sealed trait BuiltInConstant extends ConstantFactor with QualifiableFactor
+object BuiltInConstant {
+  case object E extends BuiltInConstant
+  case object PI extends BuiltInConstant
+  case object Self extends BuiltInConstant
+  case object Unknown extends BuiltInConstant
+}
+case class UserDefinedConstant(name: String) extends ConstantFactor
 sealed trait QualifiableFactor
+case class UserDefinedFactor(name: String) extends QualifiableFactor
 //case class AttributeRef(id: String) extends QualifiableFactor
-sealed trait ConstantFactor extends QualifiableFactor
+sealed trait ConstantFactor
 sealed trait Qualifier
-case class AttributeQualifier(ref: AttributeRef) extends Qualifier
-case class GroupQualifier(entityRef: EntityRef) extends Qualifier
+case class AttributeQualifier(name: String) extends Qualifier
+case class GroupQualifier(name: String) extends Qualifier
 //case class ConstantRef(name: String) extends ConstantFactor
 case class IndexQualifier(index0: NumericExpression, index1: Option[NumericExpression]) extends Qualifier
 case class Interval(lowBound: Expression, lowInclusive: Boolean, item: Expression, highInclusive: Boolean, highBound: Expression) extends Expression
@@ -68,9 +115,18 @@ case class MultipleOperation[Op <: Operator](initialValue: Expression, steps: Se
 case class SingleOperation[Op <: Operator](lhs: Expression, op: Op, rhs: Expression) extends Expression
 case class UnaryOperation(op: UnaryOp, expr: Expression) extends Expression
 
+sealed trait UnderlyingType
+sealed trait ConstructedType extends UnderlyingType
+
+case class EnumerationItem(name: String)
+case class BasedOnEnumeration(name: String, additionalItems: Seq[EnumerationItem])
+case class EnumerationType(extensible: Boolean, items: Option[Either[Seq[EnumerationItem], BasedOnEnumeration]]) 
 sealed trait InstantiableType
+case class UserDefinedEntity(name: String) extends InstantiableType
 //case class EntityRef(entityId: String) extends InstantiableType with QualifiableFactor with NamedType
-sealed trait ConcreteType extends InstantiableType
+sealed trait ConcreteType extends InstantiableType with UnderlyingType
+case class UserDefinedType(name: String) extends ConcreteType
+case class UserDefinedEntityOrType(name: String) extends ParameterType
 sealed trait AggregationType[T] extends ConcreteType with GeneralizedType
 case class ArrayType[T](bounds: Option[Bounds], optional: Boolean, unique: Boolean, tpe: T) extends AggregationType[T]
 case class BagType[T](bounds: Option[Bounds], of: T) extends AggregationType[T]
@@ -102,57 +158,69 @@ case class LogicalLiteral(value: Option[Boolean]) extends Literal
 case class RealLiteral(value: String) extends NumberLiteral
 case class StringLiteral(value: String) extends Literal
 case class AggregateInitializer(items: Seq[Expression]) extends Expression
-case class EntityConstructor(entityRef: EntityRef, items: Seq[Expression]) extends Expression
-case class EnumerationReference(typeRef: Option[TypeRef], enumerationRef: EnumerationRef) extends Expression
+case class EntityConstructor(entityRef: String, items: Seq[Expression]) extends Expression
+case class EnumerationReference(typeRef: Option[String], enumerationRef: String) extends Expression
 //case class EnumerationRef(enumeration: String)
 
 case object RepetitionOp extends Operator
 
-sealed trait NamedTypeOrRename
-case class RenamedType(namedType: NamedType, as: String) extends NamedTypeOrRename
-sealed trait NamedType extends NamedTypeOrRename with ParameterType
-sealed trait ResourceOrRename
-case class RenamedResource(resourceRef: ResourceRef, as: String) extends ResourceOrRename
+case class RenamedType(namedType: String, as: String)
+//sealed trait NamedType extends NamedTypeOrRename with ParameterType
+case class RenamedResource(resourceRef: String, as: String)
+
 //case class ResourceRef(resourceId: String) extends ResourceOrRename
 
-sealed trait BaseRef {
-  type Aux <: BaseId
+sealed trait BaseRefOrId
+sealed trait BaseRef extends BaseRefOrId {
+  type Id <: BaseId
 }
-trait AttributeRef extends BaseRef{ type Aux = AttributeId }
-trait ConstantRef extends BaseRef{ type Aux = ConstantId }
-trait EntityRef extends BaseRef{ type Aux = EntityId }
-trait EnumerationRef extends BaseRef{ type Aux = EnumerationId }
-trait FunctionRef extends BaseRef{ type Aux = FunctionId }
-trait GeneralRef extends BaseRef{ type Aux = GeneralId }
-trait ParameterRef extends BaseRef{ type Aux = ParameterId }
-trait ProcedureRef extends BaseRef{ type Aux = ProcedureId }
-trait ResourceRef extends BaseRef{ type Aux = ResourceId }
-trait RuleLabelRef extends BaseRef{ type Aux = RuleLabelId }
-trait RuleRef extends BaseRef{ type Aux = RuleId }
-trait SchemaRef extends BaseRef{ type Aux = SchemaId }
-trait SubtypeConstraintRef extends BaseRef{ type Aux = SubtypeConstraintId }
-trait TypeLabelRef extends BaseRef{ type Aux = TypeLabelId }
-trait TypeRef extends BaseRef{ type Aux = TypeId }
-trait VariableRef extends BaseRef{ type Aux = VariableId }
-case class Ref[+T <: BaseRef](id: T)
-sealed trait BaseId
-trait AttributeId extends BaseId
-trait ConstantId extends BaseId
-trait EntityId extends BaseId
-trait EnumerationId extends BaseId
-trait FunctionId extends BaseId
-trait GeneralId extends BaseId
-trait ParameterId extends BaseId
-trait ProcedureId extends BaseId
-trait ResourceId extends BaseId
-trait RuleLabelId extends BaseId
-trait RuleId extends BaseId
-trait SchemaId extends BaseId
-trait SubtypeConstraintId extends BaseId
-trait TypeLabelId extends BaseId
-trait TypeId extends BaseId
-trait VariableId extends BaseId
-case class Id[+T <: BaseId](value: String)
+trait AttributeRef extends BaseRef { type Id = AttributeId }
+trait ConstantRef extends BaseRef { type Id = ConstantId }
+trait EntityRef extends BaseRef { type Id = EntityId }
+trait EnumerationRef extends BaseRef { type Id = EnumerationId }
+trait FunctionRef extends BaseRef { type Id = FunctionId }
+trait GeneralRef extends BaseRef { type Id = GeneralId }
+trait ParameterRef extends BaseRef { type Id = ParameterId }
+trait ProcedureRef extends BaseRef { type Id = ProcedureId }
+//trait ResourceRef extends BaseRef { type Id = ResourceId }
+trait RuleLabelRef extends BaseRef { type Id = RuleLabelId }
+trait RuleRef extends BaseRef { type Id = RuleId }
+trait SchemaRef extends BaseRef { type Id = SchemaId }
+trait SubtypeConstraintRef extends BaseRef { type Id = SubtypeConstraintId }
+trait TypeLabelRef extends BaseRef { type Id = TypeLabelId }
+trait TypeRef extends BaseRef { type Id = TypeId }
+trait VariableRef extends BaseRef { type Id = VariableId }
+
+sealed trait BaseId extends BaseRefOrId {
+  type Ref <: BaseRef
+}
+trait AttributeId extends BaseId { type Ref = AttributeRef }
+trait ConstantId extends BaseId { type Ref = ConstantRef }
+trait EntityId extends BaseId { type Ref = EntityRef }
+trait EnumerationId extends BaseId { type Ref = EnumerationRef }
+trait FunctionId extends BaseId { type Ref = FunctionRef }
+trait GeneralId extends BaseId { type Ref = GeneralRef }
+trait ParameterId extends BaseId { type Ref = ParameterRef }
+trait ProcedureId extends BaseId { type Ref = ProcedureRef }
+//trait ResourceId extends BaseId { type Ref = ResourceRef }
+trait RuleLabelId extends BaseId { type Ref = RuleLabelRef }
+trait RuleId extends BaseId { type Ref = RuleRef }
+trait SchemaId extends BaseId { type Ref = SchemaRef }
+trait SubtypeConstraintId extends BaseId { type Ref = SubtypeConstraintRef }
+trait TypeLabelId extends BaseId { type Ref = TypeLabelRef }
+trait TypeId extends BaseId { type Ref = TypeRef }
+trait VariableId extends BaseId { type Ref = VariableRef }
+class RefOrId[T <: BaseRefOrId](val name: String)
+object RefOrId {
+  def apply[T <: BaseId](name: String): RefOrId[T] =
+    new RefOrId[T](name)
+  def apply[T <: BaseRef](id: RefOrId[_]) =
+    new RefOrId[T](id.name)
+
+  //implicit def toString[T](value: RefOrId[T]): String = value.name
+  //implicit def toBase[T <: BaseRefOrId](value: RefOrId[T]): T = null.asInstanceOf[T]
+}
+//case class Id[+T <: BaseId](value: String)
   /*extends AttributeRef
   with ConstantRef
   with EntityRef
@@ -162,3 +230,6 @@ case class Id[+T <: BaseId](value: String)
   with ParameterRef
   with 
 */
+
+case class Parameter(name: String, tpe: ParameterType)
+case class ProcedureParameters(variable: Boolean, parameters: Seq[Parameter])
