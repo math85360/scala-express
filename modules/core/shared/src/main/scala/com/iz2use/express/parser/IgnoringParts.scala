@@ -5,5 +5,8 @@ import fastparse.WhitespaceApi
 
 object IgnoringParts extends WhitespaceApi.Wrapper({
   import fastparse.all._
-  NoTrace((CharsWhileIn(" \t\n\f\r", 1) | "(*" ~/ (!"*)" ~ AnyChar).rep ~ "*)" ~/).rep(1))
+  ((CharsWhileIn(" \t\n\f\r", 1) |
+      ("(*" ~ (!"*)" ~ AnyChar).rep ~ "*)")).rep
+      /*Types.embedded_remark.map(_ => ())).rep*/).opaque("<any spaces or comments>") /*|
+    (&(CharIn(";,:]")) | End)*/
 })

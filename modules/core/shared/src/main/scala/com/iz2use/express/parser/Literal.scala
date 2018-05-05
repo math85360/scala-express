@@ -22,10 +22,10 @@ trait Literal extends BasicAlphabetDefinition with KeywordDefinition {
     .map(ast.StringLiteral))
   private val integer_literal: P[ast.IntegerLiteral] = P(digits
     .!.map(ast.IntegerLiteral))
-  private[parser] val literal: P[ast.Literal] = P(binary_literal | logical_literal | real_literal | string_literal)
+  private[parser] val literal: P[ast.Literal] = P((binary_literal | logical_literal | real_literal | string_literal))
   private val logical_literal: P[ast.LogicalLiteral] = P((FALSE.to(Some(false)) | TRUE.to(Some(true)) | UNKNOWN.to(None))
     .map(ast.LogicalLiteral))
-  private[parser] val real_literal: P[ast.NumberLiteral] = P(integer_literal | (digits ~ "." ~ digits.? ~ ("e" ~ sign.? ~ digits).?).!.map(ast.RealLiteral))
+  private[parser] val real_literal: P[ast.NumberLiteral] = P((digits ~ "." ~ digits.? ~ ("e" ~ sign.? ~ digits).?).!.map(ast.RealLiteral) | integer_literal)
   private[parser] val string_literal: P[ast.StringLiteral] = P(simple_string_literal | encoded_string_literal)
   private[parser] val simple_string_literal: P[ast.StringLiteral] = P(("'" ~ (("''") | not_quote | " " | "\b" | "\t" | "\n" | "\u000b" | "\f" | "\r").rep.! ~ "'")
     .map(ast.StringLiteral))

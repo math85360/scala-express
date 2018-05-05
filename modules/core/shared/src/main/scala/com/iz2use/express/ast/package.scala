@@ -32,8 +32,6 @@ package object ast {
   case class RepeatStatement(incrementControl: Option[IncrementControl], whileControl: Option[LogicalExpression], untilControl: Option[LogicalExpression], body: Seq[Statement]) extends Statement
   case class ReturnStatement(result: Option[Expression]) extends Statement
   case object SkipStatement extends Statement
-  sealed trait SupertypeConstraint
-  sealed trait SubtypeConstraint
   //case class AbstractEntityDeclaration()
   sealed trait EntityBody
   

@@ -9,7 +9,7 @@ trait BasicAlphabetDefinition {
   private[parser] val digits = P(digit.rep(1))
   private[parser] val encoded_character = P(octet ~ octet ~ octet ~ octet)
   private val hex_digit = P(digit | CharIn('a' to 'f'))
-  private val letter = P(CharIn('a' to 'z'))
+  private val letter = P(CharIn('a' to 'z', 'A' to 'Z'))
   private val lparen_then_not_lparen_star = P("(".rep(1) ~ not_lparen_star.rep(1))
   private val not_lparen_star = P(not_paren_star | ")")
   private val not_paren_star = P(letter | digit | not_paren_star_special)
@@ -24,10 +24,10 @@ trait BasicAlphabetDefinition {
   private val simple_id = P((letter ~ (letter | digit | "_").rep).!)
   private[parser] val sign = P("+" | "-")
 
-  private val embedded_remark: P[Unit] = P("(*" ~ remark_tag.? ~ (not_paren_star.rep(1) | lparen_then_not_lparen_star | "*".rep(1) | not_rparen_star_then_rparen | embedded_remark).rep ~ "*)")
-  private val remark: P[Unit] = P(embedded_remark | tail_remark)
-  private val remark_tag: P[Unit] = P("\"" ~ remark_ref ~ ("." ~ remark_ref).rep(1) ~ "\"")
-    .map(_ => ())
+  private[parser] val embedded_remark:P[String] = P(("(*" ~ remark_tag.? ~ (not_paren_star.rep(1) | lparen_then_not_lparen_star | "*".rep(1) | not_rparen_star_then_rparen | embedded_remark).rep ~ "*)").!)
+  private val remark  = P(embedded_remark | tail_remark)
+  private val remark_tag = P("\"" ~ remark_ref ~ ("." ~ remark_ref).rep(1) ~ "\"")
+    
 
   private[parser] val attribute_id = P(simple_id.map(ast.RefOrId[ast.AttributeId]))
   private[parser] val constant_id = P(simple_id.map(ast.RefOrId[ast.ConstantId]))
@@ -60,6 +60,6 @@ trait BasicAlphabetDefinition {
   private[parser] val type_ref = P(type_id.map(ast.RefOrId[ast.TypeRef]))
   private[parser] val variable_ref = P(variable_id.map(ast.RefOrId[ast.VariableRef]))
 
-  private val remark_ref = P(attribute_ref | constant_ref | entity_ref | enumeration_ref | function_ref | parameter_ref | procedure_ref | rule_label_ref | rule_ref | schema_ref | subtype_constraint_ref | type_label_ref | type_ref | variable_ref)
-  private val tail_remark = P("--" ~ remark_tag.? ~ ("\u0007" | " " | "\b" | "\t" | "\n" | "\u000b" | "\f" | "\r").rep ~ "\n")
+  private[parser] val remark_ref = P(attribute_ref | constant_ref | entity_ref | enumeration_ref | function_ref | parameter_ref | procedure_ref | rule_label_ref | rule_ref | schema_ref | subtype_constraint_ref | type_label_ref | type_ref | variable_ref)
+  private[parser] val tail_remark = P("--" ~ remark_tag.? ~ ("\u0007" | " " | "\b" | "\t" | "\n" | "\u000b" | "\f" | "\r").rep ~ "\n")
 }

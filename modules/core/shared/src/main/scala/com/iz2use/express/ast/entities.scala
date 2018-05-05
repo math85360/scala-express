@@ -11,7 +11,7 @@ case class ConstantDeclaration(constantId: String, tpe: InstantiableType, expres
 case class EntityDeclaration(
   name:              String,
   supertype:         Option[SupertypeConstraint],
-  subtype:           Seq[SubtypeConstraint],
+  subtype:           Option[SubtypeConstraint],
   attributes:        Seq[ExplicitAttribute],
   derivedAttributes: Seq[DerivedAttribute],
   inverseAttributes: Seq[InverseAttribute],
@@ -28,5 +28,6 @@ case class ProcedureDeclaration(name: String, parameters: Option[ProcedureParame
 case class ReferenceClause(schemaRef: String, imports: Seq[RenamedResource]) extends InterfaceSpecification
 case class RuleDeclaration(ruleId: String, entityRefs: Seq[String], head: Seq[AlgorithmHeadPart], body: Seq[Statement], whereClause: WhereClause) extends SchemaBody
 case class Schema(id: String, version: Option[String], body: Seq[SchemaBody])
+case class SubtypeConstraintDeclaration(name: String, entity: String, abstractSuperType:Boolean, totalOver: Seq[String], of: Option[SupertypeExpression]) extends Declaration 
 case class TypeDeclaration(name: String, underlyingType: UnderlyingType, whereClause: Option[WhereClause]) extends Declaration
 case class UseClause(schemaRef: String, imports: Seq[RenamedType]) extends InterfaceSpecification
