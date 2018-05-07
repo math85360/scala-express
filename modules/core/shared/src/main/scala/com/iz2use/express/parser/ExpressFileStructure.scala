@@ -47,12 +47,12 @@ trait ExpressFileStructure {
     .map { case (a, (b, c), (d, e, f, g, h)) => ast.EntityDeclaration(a, b, c, d, e, f, g, h) })
   private val entity_head = P(ENTITY ~/ entity_id.map(_.name) ~ subsuper ~ ";" ~/)
 
-  private val enumeration_extension: P[ast.BasedOnEnumeration] = P((BASED_ON ~ type_ref.map(_.name) ~ (WITH ~ enumeration_items).?)
+  private val enumeration_extension: P[ast.BasedOnEnumeration] = P((BASED_ON ~|~ type_ref.map(_.name) ~ (Pass ~|~ WITH ~|~ enumeration_items).?)
     .map(ast.BasedOnEnumeration.tupled))
 
-  private val enumeration_items: P[Seq[ast.EnumerationItem]] = P("(" ~ enumeration_id.map(r => ast.EnumerationItem(r.name)).nonEmptyList ~ ")")
+  private val enumeration_items: P[Seq[ast.EnumerationItem]] = P(("(":P[Unit]) ~|?~/ enumeration_id.map(r => ast.EnumerationItem(r.name)).nonEmptyList ~|?~ ")")
 
-  private val enumeration_type: P[ast.EnumerationType] = P((EXTENSIBLE.? ~ ENUMERATION ~ ((OF ~ enumeration_items).map(Left(_)) | enumeration_extension.map(Right(_))).?)
+  private val enumeration_type: P[ast.EnumerationType] = P(((EXTENSIBLE ~|~/ Pass).? ~ ENUMERATION ~|~ ((OF ~|~ enumeration_items).map(Left(_)) | enumeration_extension.map(Right(_))).?)
     .map(ast.EnumerationType.tupled))
   private val escape_stmt = P(ESCAPE.to(ast.EscapeStatement) ~ ";")
   private val explicit_attr = P(attribute_decl.nonEmptyList ~ ":" ~/ OPTIONAL.? ~ parameter_type ~ ";" ~/)
@@ -122,9 +122,9 @@ trait ExpressFileStructure {
     .map(ast.RuleDeclaration.tupled))
   private val rule_head = P(RULE ~ rule_id.map(_.name) ~ FOR ~ "(" ~ entity_ref.map(_.name).nonEmptyList ~ ")" ~ ";")
 
-  private val schema_body: P[Seq[ast.SchemaBody]] = P((interface_specification.rep ~ constant_decl.? ~ (declaration | rule_decl).rep)
+  private val schema_body: P[Seq[ast.SchemaBody]] = P(((interface_specification ~|?~ Pass).rep ~ (constant_decl ~|?~ Pass).? ~ ((declaration | rule_decl) ~|?~ Pass).rep)
     .map { case (a, b, c) => a ++ b ++ c })
-  private val schema_decl: P[ast.Schema] = P((SCHEMA ~ schema_id.map(_.name) ~ schema_version_id.map(_.value).? ~ Symbol(";") ~ schema_body ~ END_SCHEMA ~ Symbol(";"))
+  private val schema_decl: P[ast.Schema] = P((SCHEMA ~|~/ schema_id.map(_.name) ~ (Pass ~|~ schema_version_id).map(_.value).? ~ Symbol(";") ~ schema_body ~ END_SCHEMA ~ Symbol(";", false))
     .map(ast.Schema.tupled))
 
   private val schema_version_id = P(string_literal)
@@ -173,7 +173,7 @@ trait ExpressFileStructure {
   private val syntax: P[Seq[ast.Schema]] = P(schema_decl.rep(1))
 
   private val total_over = P(TOTAL_OVER ~ "(" ~ entity_ref.map(_.name).nonEmptyList ~ ")" ~ ";")
-  protected[parser] val type_decl: P[ast.TypeDeclaration] = P((TYPE ~|~/ type_id.map(_.name) ~ Symbol("=") ~ underlying_type ~ Symbol(";") ~ where_clause.? ~ END_TYPE ~ Symbol(";"))
+  protected[parser] val type_decl: P[ast.TypeDeclaration] = P((TYPE ~|~/ type_id.map(_.name) ~ Symbol("=") ~ underlying_type ~|?~ ";" ~|?~/ (where_clause ~|?~/ Pass).? ~ END_TYPE ~ Symbol(";", false))
     .map(ast.TypeDeclaration.tupled))
 
   private val underlying_type: P[ast.UnderlyingType] = P(constructed_types | concrete_types)
@@ -184,10 +184,10 @@ trait ExpressFileStructure {
   private val use_clause: P[ast.UseClause] = P((USE ~ FROM ~ schema_ref.map(_.name) ~ ("(" ~ named_type_or_rename.nonEmptyList ~ ")").? ~ ";")
     .map(ast.UseClause.tupled))
 
-  private val where_clause: P[ast.WhereClause] = P((WHERE ~/ domain_rule.rep(1, ";" ~ !(END_ENTITY | END_TYPE)) ~ ";")
+  private val where_clause: P[ast.WhereClause] = P((WHERE ~|~/ domain_rule.rep(1, (";": P[Unit]) ~|?~/ !(END_ENTITY | END_TYPE)) ~|?~ ";")
     .map(ast.WhereClause))
 
   private val while_control = P(WHILE ~ logical_expression)
 
-  val root = P(Pass ~ syntax ~ tail_remark.?.map(_ => ()) ~ End)
+  val root = P(Pass ~|?~ syntax ~|?~ tail_remark.?.map(_ => ()) ~|?~ End)
 }

@@ -8,18 +8,18 @@ import com.iz2use.express.ast.BuiltInFunction.Acos
 trait Expression extends Literal {
   import BasicAlphabetDefinition._
 
-  private[parser] val actual_parameter_list: P[Seq[ast.Expression]] = P(("(" ~/ parameter.nonEmptyList.? ~ ")"))
+  private[parser] val actual_parameter_list: P[Seq[ast.Expression]] = P((("(": P[Unit]) ~|?~/ parameter.nonEmptyList.? ~ ")"))
   private val add_like_op: P[ast.AddLikeOp] = P(
-    "+".to(ast.AdditionOp) | "-".to(ast.SubtractionOp) |
-      OR.to(ast.OrOp) | XOR.to(ast.XorOp))
-  private val aggregate_initializer: P[ast.AggregateInitializer] = P(("[" ~ element.nonEmptyList ~ "]")
+    Symbol("+").to(ast.AdditionOp) | Symbol("-").to(ast.SubtractionOp) |
+      Keyword(OR).to(ast.OrOp) | Keyword(XOR).to(ast.XorOp))
+  private val aggregate_initializer: P[ast.AggregateInitializer] = P((("[": P[Unit]) ~|?~/ element.nonEmptyList ~ "]")
     .map(ast.AggregateInitializer.apply))
   private val aggregate_source = P(simple_expression)
   private[parser] val attribute_qualifier: P[ast.AttributeQualifier] = P(("." ~ attribute_ref.map(_.name))
     .map(ast.AttributeQualifier))
   private[parser] val bound_1 = P(numeric_expression)
   private[parser] val bound_2 = P(numeric_expression)
-  private[parser] val bound_spec = P((Symbol("[") ~|?~/ bound_1 ~|?~ Symbol(":") ~|?~/ bound_2 ~|?~ Symbol("]", true))
+  private[parser] val bound_spec = P((Symbol("[") ~|?~/ bound_1 ~|?~ Symbol(":") ~|?~/ bound_2 ~|?~ Symbol("]", false))
     .map(ast.Bounds.tupled))
   private val built_in_constant = P(((
     CONST_E.to(ast.BuiltInConstant.E) |
@@ -58,7 +58,7 @@ trait Expression extends Literal {
     VALUE_IN.to(ast.BuiltInFunction.ValueIn) |
     VALUE.to(ast.BuiltInFunction.Value)) ~/))
   private val constant_factor: P[ast.ConstantFactor] = P(built_in_constant | constant_ref.map(_.name).map(ast.UserDefinedConstant))
-  private[parser] val domain_rule: P[ast.DomainRule] = P(((rule_label_id.map(_.name) ~ ":" ~/).? ~/ expression)
+  private[parser] val domain_rule: P[ast.DomainRule] = P(((rule_label_id.map(_.name) ~ Symbol(":")).? ~ expression)
     .map(ast.DomainRule.tupled))
   private val element: P[ast.Expression] = P((expression ~ (":" ~ repetition).?)
     .map {
@@ -80,17 +80,17 @@ trait Expression extends Literal {
   private val index = P(numeric_expression)
   private val index_1 = P(index)
   private val index_2 = P(index)
-  private val interval: P[ast.Interval] = P(("{" ~ interval_low ~ interval_op ~ interval_item ~ interval_op ~ interval_high ~ "}")
+  private val interval: P[ast.Interval] = P((("{": P[Unit]) ~|?~/ interval_low ~ interval_op ~ interval_item ~ interval_op ~ interval_high ~|?~ "}" ~/)
     .map(ast.Interval.tupled))
   private val interval_high = P(simple_expression)
   private val interval_item = P(simple_expression)
   private val interval_low = P(simple_expression)
-  private val interval_op: P[Boolean] = P("<" ~ "=".?)
+  private val interval_op: P[Boolean] = P(Symbol("<" ~ "=".?))
   private[parser] val logical_expression: P[ast.LogicalExpression] = P(expression)
   private val multiplication_like_op: P[ast.MultiplicationLikeOp] = P(
-    "*".to(ast.MultiplicationOp) | "/".to(ast.DivisionOp) |
-      DIV.to(ast.DivisionOp) | MOD.to(ast.ModuloOp) |
-      AND.to(ast.AndOp) | "||".to(ast.OrElseOp))
+    Symbol("*").to(ast.MultiplicationOp) | Symbol("/").to(ast.DivisionOp) |
+      Keyword(DIV).to(ast.DivisionOp) | Keyword(MOD).to(ast.ModuloOp) |
+      Keyword(!ANDOR ~ AND).to(ast.AndOp) | Symbol("||").to(ast.OrElseOp))
   private[parser] val numeric_expression: P[ast.NumericExpression] = P(simple_expression)
   private val parameter = P(expression)
   private val population = P(entity_ref)
@@ -108,14 +108,15 @@ trait Expression extends Literal {
   private val query_expression: P[ast.QueryExpression] = P((QUERY ~/ "(" ~/ variable_id.map(_.name) ~ "<*" ~/ aggregate_source ~ "|" ~/ logical_expression ~ ")")
     .map(ast.QueryExpression.tupled))
   private val rel_op = P(
-    "<=".to(ast.LE) | ">=".to(ast.GE) |
-      "<>".to(ast.NE) | "=".to(ast.EQ) |
-      ("<" ~ !"*").to(ast.LT) | ">".to(ast.GT) |
-      ":<>:".to(ast.TN) | ":=:".to(ast.TE))
-  private val rel_op_extended: P[ast.RelOpExtended] = P(rel_op | IN.to(ast.IN) | LIKE.to(ast.LIKE))
+    Symbol("<=").to(ast.LE) | Symbol(">=").to(ast.GE) |
+      Symbol("<>").to(ast.NE) | Symbol("=").to(ast.EQ) |
+      Symbol("<" ~ !"*").to(ast.LT) | Symbol(">").to(ast.GT) |
+      Symbol(":<>:").to(ast.TN) | Symbol(":=:").to(ast.TE))
+  private val rel_op_extended: P[ast.RelOpExtended] = P(rel_op | Keyword(IN).to(ast.IN) | Keyword(LIKE).to(ast.LIKE))
   private val repetition = P(numeric_expression)
   private val simple_expression: P[ast.Expression] = P((term ~ (add_like_op ~/ term).rep))
   private val simple_factor: P[ast.Expression] = P((
+    interval |
     query_expression |
     (unary_op.? ~ ("(" ~ expression ~ ")" | primary)).map({
       case (Some(op), expr) => ast.UnaryOperation(op, expr)
@@ -123,8 +124,7 @@ trait Expression extends Literal {
     }) |
     aggregate_initializer |
     entity_constructor |
-    enumeration_reference |
-    interval))
+    enumeration_reference))
   private val term: P[ast.Expression] = P((factor ~ (multiplication_like_op ~/ factor).rep))
   private val unary_op: P[ast.UnaryOp] = P(
     "+".to(ast.PositiveOp) | "-".to(ast.NegativeOp) | NOT.to(ast.NotOp))

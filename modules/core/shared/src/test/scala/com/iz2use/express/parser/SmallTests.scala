@@ -1,6 +1,7 @@
 package com.iz2use.express.parser
 
 import com.iz2use.express.ast._
+import BasicAlphabetDefinition._
 import fastparse.all._
 import utest._
 
@@ -18,8 +19,7 @@ object SmallTests extends TestSuite {
 	TheActor : IfcActorSelect;
  INVERSE
 	IsActingUpon : SET [0:?] OF IfcRelAssignsToActor FOR RelatingActor;
-END_ENTITY;
-""")
+END_ENTITY;""")
       parsed match {
         case f @ Parsed.Failure(a, b, c) =>
           println(c.traced.fullStack.mkString("\n"))
@@ -38,7 +38,7 @@ END_ENTITY;
     'Rule{
     }
     'Type{
-      val parsed = P(Parser.type_decl.rep(1) ~ End).parse(
+      val parsed = P(Parser.type_decl.rep(1, spaceOrComments.?) ~ End).parse(
         """TYPE IfcAngularVelocityMeasure = REAL;
 END_TYPE;
 
@@ -72,8 +72,7 @@ TYPE IfcCompoundPlaneAngleMeasure = LIST [3:4] OF INTEGER;
 	ConsistentSign : ((SELF[1] >= 0) AND (SELF[2] >= 0) AND (SELF[3] >= 0) AND ((SIZEOF(SELF) = 3) OR (SELF[4] >= 0)))
 OR
 ((SELF[1] <= 0) AND (SELF[2] <= 0) AND (SELF[3] <= 0) AND ((SIZEOF(SELF) = 3) OR (SELF[4] <= 0)));
-END_TYPE;
-""")
+END_TYPE;""")
       parsed match {
         case f @ Parsed.Failure(a, b, c) =>
           println(c.traced.fullStack.mkString("\n"))

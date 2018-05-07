@@ -14,11 +14,17 @@ package object parser {
     val symbolParser = P(symbol)
   }*/
   object Symbol {
-    def apply(p: String, last: Boolean = false): P[Unit] = { //Symbol(p)
+    def apply[R](p: P[R], spaceAfter: Boolean = true): P[R] = { //Symbol(p)
       import BasicAlphabetDefinition._
-      if (last) spaceOrComments.?(Optioner.UnitOptioner) ~ P(p) ~/
-      else spaceOrComments.?(Optioner.UnitOptioner) ~ P(p) ~
+      if (!spaceAfter) spaceOrComments.?(Optioner.UnitOptioner) ~ p ~/
+      else spaceOrComments.?(Optioner.UnitOptioner) ~ p ~
         spaceOrComments.?(Optioner.UnitOptioner) ~/
+    }
+  }
+  object Keyword {
+    def apply(p: P[Unit]): P[Unit] = {
+      import BasicAlphabetDefinition._
+      spaceOrComments ~ P(p) ~ spaceOrComments ~/
     }
   }
   //object discardResult extends  Optioner.Optioner[Unit, Unit]
@@ -27,7 +33,8 @@ package object parser {
       //implicit val seq = Implicits.Sequencer.Sequencer1[T, Seq[T]]
       //implicit val rpt = Implicits.Repeater.GenericRepeater[T]
       //(p ~ ("," ~ p).rep).map({ case (head, tail) => head +: tail })
-      p0.rep(1, ",")
+      import BasicAlphabetDefinition._
+      p0.rep(1, spaceOrComments.? ~ "," ~ spaceOrComments.?)
     }
     def to[V](v: V)(implicit ev: T =:= Unit): P[V] = p0.map(_ => v)
     def ~|~[V, R](p: Parser[V])(implicit ev: Sequencer[T, V, R]): Parser[R] = {

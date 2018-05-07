@@ -11,12 +11,12 @@ trait Types extends Expression {
     .map(ast.AggregateType.tupled))
   private val aggregation_types: P[ast.AggregationType[ast.InstantiableType]] = P(array_type | bag_type | list_type | set_type)
 
-  private val array_type = P((ARRAY ~ bound_spec.map(Some(_)) ~ OF ~ OPTIONAL.? ~ UNIQUE.? ~ instantiable_type)
+  private val array_type = P((ARRAY ~ bound_spec.map(Some(_)) ~|~ OF ~|~/ (OPTIONAL ~|~/ Pass).? ~ (UNIQUE ~|~/ Pass).? ~ instantiable_type)
     .map((ast.ArrayType[ast.InstantiableType] _).tupled))
 
   private val bag_type = P((BAG ~ bound_spec.? ~ OF ~ instantiable_type)
     .map((ast.BagType[ast.InstantiableType] _).tupled))
-  private val binary_type = P((BINARY ~/ width_spec.?)
+  private val binary_type = P((BINARY ~|?~/ width_spec.?)
     .map(ast.BinaryType))
   private val boolean_type = P((BOOLEAN ~/)
     .to(ast.BooleanType))
@@ -65,18 +65,18 @@ trait Types extends Expression {
   private val real_type = P((REAL ~ ("(" ~ precision_spec ~ ")").?)
     .map(ast.RealType))
 
-  private val set_type = P((SET ~ bound_spec.? ~ OF ~ instantiable_type)
+  private val set_type = P((SET ~/ bound_spec.? ~|~ OF ~|~/ instantiable_type)
     .map((ast.SetType[ast.InstantiableType] _).tupled))
 
   private val simple_types: P[ast.SimpleType] = P(binary_type | boolean_type | integer_type | logical_type | number_type | real_type | string_type)
 
-  private val string_type = P((STRING ~/ width_spec.?)
+  private val string_type = P((STRING ~|?~/ width_spec.?)
     .map(ast.StringType))
 
   private val type_label: P[String] = P((type_label_id | type_label_ref).map(_.name))
 
   private val width = P(numeric_expression)
-  private val width_spec = P(("(" ~/ width ~ ")" ~/ FIXED.?)
+  private val width_spec = P((("(":P[Unit]) ~|?~/ width ~|?~ ")" ~/ (Pass ~|?~ FIXED).?)
     .map(ast.Width.tupled))
 }
 object Types extends Types
