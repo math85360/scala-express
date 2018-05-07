@@ -1,9 +1,10 @@
 package com.iz2use.express.parser
 
+import scala.language.postfixOps
 import com.iz2use.express.ast
 import fastparse.all._
 
-trait BasicAlphabetDefinition {
+object BasicAlphabetDefinition {
   private[parser] val bit = P(CharIn("01"))
   private val digit = P(CharIn('0' to '9'))
   private[parser] val digits = P(digit.rep(1))
@@ -24,10 +25,9 @@ trait BasicAlphabetDefinition {
   private val simple_id = P((letter ~ (letter | digit | "_").rep).!)
   private[parser] val sign = P("+" | "-")
 
-  private[parser] val embedded_remark:P[String] = P(("(*" ~ remark_tag.? ~ (not_paren_star.rep(1) | lparen_then_not_lparen_star | "*".rep(1) | not_rparen_star_then_rparen | embedded_remark).rep ~ "*)").!)
-  private val remark  = P(embedded_remark | tail_remark)
+  private[parser] val embedded_remark: P[String] = P(("(*" ~ remark_tag.? ~ (not_paren_star.rep(1) | lparen_then_not_lparen_star | "*".rep(1) | not_rparen_star_then_rparen | embedded_remark).rep ~ "*)").!)
+  private val remark = P(embedded_remark | tail_remark)
   private val remark_tag = P("\"" ~ remark_ref ~ ("." ~ remark_ref).rep(1) ~ "\"")
-    
 
   private[parser] val attribute_id = P(simple_id.map(ast.RefOrId[ast.AttributeId]))
   private[parser] val constant_id = P(simple_id.map(ast.RefOrId[ast.ConstantId]))
@@ -62,4 +62,8 @@ trait BasicAlphabetDefinition {
 
   private[parser] val remark_ref = P(attribute_ref | constant_ref | entity_ref | enumeration_ref | function_ref | parameter_ref | procedure_ref | rule_label_ref | rule_ref | schema_ref | subtype_constraint_ref | type_label_ref | type_ref | variable_ref)
   private[parser] val tail_remark = P("--" ~ remark_tag.? ~ ("\u0007" | " " | "\b" | "\t" | "\n" | "\u000b" | "\f" | "\r").rep ~ "\n")
+  private[parser] val space = P(CharsWhileIn(" \t\n\f\r", 1))
+  private[parser] val comment = P("(*" ~/ (!"*)" ~ AnyChar).rep ~ "*)" ~/)
+  private[parser] val spaceOrComments = P((space | comment).rep(1))
+
 }

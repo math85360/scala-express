@@ -2,12 +2,13 @@ package com.iz2use.express.parser
 
 import com.iz2use.express.ast
 import scala.language.postfixOps
-import IgnoringParts._
-import fastparse.noApi._
+import fastparse.all._
 import com.iz2use.express.ast.BuiltInFunction.Acos
 
 trait Expression extends Literal {
-  private[parser] val actual_parameter_list: P[Seq[ast.Expression]] = P(("(" ~/ parameter.nonEmptyList ~ ")"))
+  import BasicAlphabetDefinition._
+
+  private[parser] val actual_parameter_list: P[Seq[ast.Expression]] = P(("(" ~/ parameter.nonEmptyList.? ~ ")"))
   private val add_like_op: P[ast.AddLikeOp] = P(
     "+".to(ast.AdditionOp) | "-".to(ast.SubtractionOp) |
       OR.to(ast.OrOp) | XOR.to(ast.XorOp))
@@ -18,7 +19,7 @@ trait Expression extends Literal {
     .map(ast.AttributeQualifier))
   private[parser] val bound_1 = P(numeric_expression)
   private[parser] val bound_2 = P(numeric_expression)
-  private[parser] val bound_spec = P(("[" ~/ bound_1 ~ ":" ~/ bound_2 ~ "]")
+  private[parser] val bound_spec = P((Symbol("[") ~|?~/ bound_1 ~|?~ Symbol(":") ~|?~/ bound_2 ~|?~ Symbol("]", true))
     .map(ast.Bounds.tupled))
   private val built_in_constant = P(((
     CONST_E.to(ast.BuiltInConstant.E) |
@@ -104,17 +105,18 @@ trait Expression extends Literal {
     general_ref.map(r => ast.UserDefinedFactor(r.name)) |
     population.map(r => ast.UserDefinedFactor(r.name))))
   private[parser] val qualifier: P[ast.Qualifier] = P(attribute_qualifier | group_qualifier | index_qualifier)
-  private val query_expression: P[ast.QueryExpression] = P((QUERY ~ "(" ~ variable_id.map(_.name) ~ "<*" ~ aggregate_source ~ "|" ~ logical_expression ~ ")")
+  private val query_expression: P[ast.QueryExpression] = P((QUERY ~/ "(" ~/ variable_id.map(_.name) ~ "<*" ~/ aggregate_source ~ "|" ~/ logical_expression ~ ")")
     .map(ast.QueryExpression.tupled))
   private val rel_op = P(
     "<=".to(ast.LE) | ">=".to(ast.GE) |
       "<>".to(ast.NE) | "=".to(ast.EQ) |
-      "<".to(ast.LT) | ">".to(ast.GT) |
+      ("<" ~ !"*").to(ast.LT) | ">".to(ast.GT) |
       ":<>:".to(ast.TN) | ":=:".to(ast.TE))
   private val rel_op_extended: P[ast.RelOpExtended] = P(rel_op | IN.to(ast.IN) | LIKE.to(ast.LIKE))
   private val repetition = P(numeric_expression)
   private val simple_expression: P[ast.Expression] = P((term ~ (add_like_op ~/ term).rep))
   private val simple_factor: P[ast.Expression] = P((
+    query_expression |
     (unary_op.? ~ ("(" ~ expression ~ ")" | primary)).map({
       case (Some(op), expr) => ast.UnaryOperation(op, expr)
       case (_, expr)        => expr
@@ -122,8 +124,7 @@ trait Expression extends Literal {
     aggregate_initializer |
     entity_constructor |
     enumeration_reference |
-    interval |
-    query_expression))
+    interval))
   private val term: P[ast.Expression] = P((factor ~ (multiplication_like_op ~/ factor).rep))
   private val unary_op: P[ast.UnaryOp] = P(
     "+".to(ast.PositiveOp) | "-".to(ast.NegativeOp) | NOT.to(ast.NotOp))

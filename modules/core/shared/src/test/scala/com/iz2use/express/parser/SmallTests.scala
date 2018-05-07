@@ -1,8 +1,7 @@
 package com.iz2use.express.parser
 
 import com.iz2use.express.ast._
-import IgnoringParts._
-import fastparse.noApi._
+import fastparse.all._
 import utest._
 
 object SmallTests extends TestSuite {

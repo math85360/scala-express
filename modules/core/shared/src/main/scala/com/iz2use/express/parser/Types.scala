@@ -2,10 +2,10 @@ package com.iz2use.express.parser
 
 import com.iz2use.express.ast
 import scala.language.postfixOps
-import IgnoringParts._
-import fastparse.noApi._
+import fastparse.all._
 
 trait Types extends Expression {
+  import BasicAlphabetDefinition._
 
   private val aggregate_type: P[ast.AggregateType] = P((AGGREGATE ~ (":" ~ type_label).? ~ OF ~ parameter_type)
     .map(ast.AggregateType.tupled))
@@ -37,14 +37,14 @@ trait Types extends Expression {
 
   private val generic_entity_type: P[ast.GenericEntityType] = P((GENERIC_ENTITY ~ (":" ~ type_label).?)
     .map(ast.GenericEntityType))
-  private val generic_type: P[ast.GenericType] = P((GENERIC ~ (":" ~ type_label).?)
+  private val generic_type: P[ast.GenericType] = P((GENERIC ~/ (":" ~/ type_label).?)
     .map(ast.GenericType))
 
   private[parser] val instantiable_type: P[ast.InstantiableType] = P(concrete_types | entity_ref.map(_.name).map(ast.UserDefinedEntity))
   private val integer_type = P((INTEGER ~/)
     .to(ast.IntegerType))
 
-  private val list_type = P((LIST ~/ bound_spec.? ~ OF ~/ UNIQUE.? ~ instantiable_type)
+  private val list_type = P((LIST ~/ bound_spec.? ~|~ OF ~|~/ (UNIQUE ~|~/ Pass).? ~ instantiable_type)
     .map((ast.ListType[ast.InstantiableType] _).tupled))
 
   private val logical_type = P((LOGICAL ~/)
@@ -59,7 +59,7 @@ trait Types extends Expression {
   private val number_type = P((NUMBER ~/)
     .to(ast.NumberType))
 
-  private[parser] val parameter_type: P[ast.ParameterType] = P(generalized_types | named_types.map(_.name).map(ast.UserDefinedEntityOrType) | simple_types)
+  private[parser] val parameter_type: P[ast.ParameterType] = P(generalized_types | simple_types | named_types.map(_.name).map(ast.UserDefinedEntityOrType))
   private val precision_spec = P(numeric_expression)
 
   private val real_type = P((REAL ~ ("(" ~ precision_spec ~ ")").?)
@@ -76,7 +76,7 @@ trait Types extends Expression {
   private val type_label: P[String] = P((type_label_id | type_label_ref).map(_.name))
 
   private val width = P(numeric_expression)
-  private val width_spec = P(("(" ~ width ~ ")" ~ FIXED.?)
+  private val width_spec = P(("(" ~/ width ~ ")" ~/ FIXED.?)
     .map(ast.Width.tupled))
 }
 object Types extends Types

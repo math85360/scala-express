@@ -1,23 +1,66 @@
 package com.iz2use.express
 
-import fastparse.noApi._
-import parser.IgnoringParts._
+//import fastparse.noApi._
+//import parser.IgnoringParts._
+import scala.language.postfixOps
+import fastparse.all._
 import fastparse.core.Implicits
 import fastparse.core.Implicits.Optioner
 import fastparse.core.Implicits.Sequencer
 
 package object parser {
-  implicit final class RichParser[T](p: Parser[T]) {
-    def nonEmptyList : P[Seq[T]] = {
+
+  /*case class Symbol(symbol: String) {
+    val symbolParser = P(symbol)
+  }*/
+  object Symbol {
+    def apply(p: String, last: Boolean = false): P[Unit] = { //Symbol(p)
+      import BasicAlphabetDefinition._
+      if (last) spaceOrComments.?(Optioner.UnitOptioner) ~ P(p) ~/
+      else spaceOrComments.?(Optioner.UnitOptioner) ~ P(p) ~
+        spaceOrComments.?(Optioner.UnitOptioner) ~/
+    }
+  }
+  //object discardResult extends  Optioner.Optioner[Unit, Unit]
+  implicit final class RichParser[T](p0: Parser[T]) {
+    def nonEmptyList: P[Seq[T]] = {
       //implicit val seq = Implicits.Sequencer.Sequencer1[T, Seq[T]]
       //implicit val rpt = Implicits.Repeater.GenericRepeater[T]
       //(p ~ ("," ~ p).rep).map({ case (head, tail) => head +: tail })
-      p.rep(1, ",")
+      p0.rep(1, ",")
     }
-    def to[V](v: V)(implicit ev: T =:= Unit): P[V] = p.map(_ => v)
+    def to[V](v: V)(implicit ev: T =:= Unit): P[V] = p0.map(_ => v)
+    def ~|~[V, R](p: Parser[V])(implicit ev: Sequencer[T, V, R]): Parser[R] = {
+      import BasicAlphabetDefinition._
+      p0.~(spaceOrComments).~(p)
+    }
+    def ~|?~[V, R](p: Parser[V])(implicit ev: Sequencer[T, V, R]): Parser[R] = {
+      import BasicAlphabetDefinition._
+      p0.~(spaceOrComments.?(Optioner.UnitOptioner)).~(p)
+    }
+    def ~|~/[V, R](p: Parser[V])(implicit ev: Sequencer[T, V, R]): Parser[R] = {
+      import BasicAlphabetDefinition._
+      p0.~(spaceOrComments).~(p).~/
+    }
+    def ~|?~/[V, R](p: Parser[V])(implicit ev: Sequencer[T, V, R]): Parser[R] = {
+      import BasicAlphabetDefinition._
+      p0.~(spaceOrComments.?(Optioner.UnitOptioner)).~(p).~/
+    }
+    //def ~|~/[V, R](p: Parser[V]
+    /*def ~(s: Symbol): P[T] = {
+      import BasicAlphabetDefinition._
+      p0 ~~ spaceOrComments.?(Optioner.UnitOptioner) ~~ s.symbolParser
+    }
+    def ~!~/(s: Symbol): P[T] = {
+      import BasicAlphabetDefinition._
+      import fastparse.parsers.Combinators.Cut
+      Cut[T, Char, String](
+        p0 ~~ spaceOrComments.?(Optioner.UnitOptioner) ~~ s.symbolParser)
+    }*/
   }
   implicit final class RichString(p: String) {
     def to[V](v: V): P[V] = (p: Parser[Unit]).map(_ => v)
+    //def sp = null
   }
   implicit final def toSeqOptionerImplicit[T] = new SeqOptionerImplicit[T]
   final class SeqOptionerImplicit[T] extends Optioner[Seq[T], Seq[T]] {
