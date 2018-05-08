@@ -22,7 +22,8 @@ object BasicAlphabetDefinition {
   private val special = P(not_paren_star_quote_special | "(" | ")" | "*" | "'")
   private val not_rparen_star_then_rparen = P(not_rparen_star.rep(1) ~ ")".rep(1))
 
-  private val simple_id = P((letter ~ (letter | digit | "_").rep).!)
+  private[parser] val simple_id_tail = P((letter | digit | "_"))
+  private val simple_id = P((letter ~ simple_id_tail.rep).!)
   private[parser] val sign = P("+" | "-")
 
   private[parser] val embedded_remark: P[String] = P(("(*" ~ remark_tag.? ~ (not_paren_star.rep(1) | lparen_then_not_lparen_star | "*".rep(1) | not_rparen_star_then_rparen | embedded_remark).rep ~ "*)").!)
@@ -64,6 +65,7 @@ object BasicAlphabetDefinition {
   private[parser] val tail_remark = P("--" ~ remark_tag.? ~ ("\u0007" | " " | "\b" | "\t" | "\n" | "\u000b" | "\f" | "\r").rep ~ "\n")
   private[parser] val space = P(CharsWhileIn(" \t\n\f\r", 1))
   private[parser] val comment = P("(*" ~/ (!"*)" ~ AnyChar).rep ~ "*)" ~/)
-  private[parser] val spaceOrComments = P((space | comment).rep(1))
+  private[parser] val spaceOrComments : P[Unit]= P((space | comment).rep(1))
+  private[parser] val spaceOrCommentsOpt: P[Unit] = P(spaceOrComments.?.map(_ => ()))
 
 }

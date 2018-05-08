@@ -11,7 +11,7 @@ trait Types extends Expression {
     .map(ast.AggregateType.tupled))
   private val aggregation_types: P[ast.AggregationType[ast.InstantiableType]] = P(array_type | bag_type | list_type | set_type)
 
-  private val array_type = P((ARRAY ~ bound_spec.map(Some(_)) ~|~ OF ~|~/ (OPTIONAL ~|~/ Pass).? ~ (UNIQUE ~|~/ Pass).? ~ instantiable_type)
+  private val array_type = P((ARRAY ~ bound_spec.map(Some(_)) ~|~ OF ~|~/ (OPTIONAL ~/ spaceOrComments).? ~ (UNIQUE ~/ spaceOrComments).? ~ instantiable_type)
     .map((ast.ArrayType[ast.InstantiableType] _).tupled))
 
   private val bag_type = P((BAG ~ bound_spec.? ~ OF ~ instantiable_type)
@@ -25,14 +25,14 @@ trait Types extends Expression {
 
   private val generalized_types: P[ast.GeneralizedType] = P(aggregate_type | general_aggregation_types | generic_entity_type | generic_type)
   private val general_aggregation_types: P[ast.AggregationType[ast.ParameterType]] = P(general_array_type | general_bag_type | general_list_type | general_set_type)
-  private val general_array_type = P((ARRAY ~ bound_spec.? ~ OF ~ OPTIONAL.? ~ UNIQUE.? ~ parameter_type)
+  private val general_array_type = P((ARRAY ~/ bound_spec.? ~|~ OF ~|~/ (OPTIONAL ~/ spaceOrComments).? ~ (UNIQUE ~/ spaceOrComments).? ~ parameter_type)
     .map((ast.ArrayType[ast.ParameterType] _).tupled))
-  private val general_bag_type = P((BAG ~ bound_spec.? ~ OF ~ parameter_type)
+  private val general_bag_type = P((BAG ~/ bound_spec.? ~|~ OF ~|~/ parameter_type)
     .map((ast.BagType[ast.ParameterType] _).tupled))
-  private val general_list_type = P((LIST ~ bound_spec.? ~ OF ~ UNIQUE.? ~ parameter_type)
+  private val general_list_type = P((LIST ~/ bound_spec.? ~|~ OF ~|~/ (UNIQUE ~/ spaceOrComments).? ~ parameter_type)
     .map((ast.ListType[ast.ParameterType] _).tupled))
 
-  private val general_set_type = P((SET ~ bound_spec.? ~ OF ~ parameter_type)
+  private val general_set_type = P((SET ~/ bound_spec.? ~|~ OF ~|~/ parameter_type)
     .map((ast.SetType[ast.ParameterType] _).tupled))
 
   private val generic_entity_type: P[ast.GenericEntityType] = P((GENERIC_ENTITY ~ (":" ~ type_label).?)
@@ -44,7 +44,7 @@ trait Types extends Expression {
   private val integer_type = P((INTEGER ~/)
     .to(ast.IntegerType))
 
-  private val list_type = P((LIST ~/ bound_spec.? ~|~ OF ~|~/ (UNIQUE ~|~/ Pass).? ~ instantiable_type)
+  private val list_type = P((LIST ~/ bound_spec.? ~|~ OF ~|~/ (UNIQUE ~/ spaceOrComments).? ~ instantiable_type)
     .map((ast.ListType[ast.InstantiableType] _).tupled))
 
   private val logical_type = P((LOGICAL ~/)
@@ -76,7 +76,7 @@ trait Types extends Expression {
   private val type_label: P[String] = P((type_label_id | type_label_ref).map(_.name))
 
   private val width = P(numeric_expression)
-  private val width_spec = P((("(":P[Unit]) ~|?~/ width ~|?~ ")" ~/ (Pass ~|?~ FIXED).?)
+  private val width_spec = P((("(": P[Unit]) ~|?~/ width ~|?~ ")" ~/ (spaceOrCommentsOpt ~ FIXED).?)
     .map(ast.Width.tupled))
 }
 object Types extends Types

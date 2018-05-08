@@ -10,8 +10,8 @@ trait ExpressFileStructure {
   import Types._
   private val abstract_entity_declaration: P[ast.AbstractEntityDeclaration.type] = P((ABSTRACT ~/)
     .to(ast.AbstractEntityDeclaration))
-  private val abstract_supertype = P(ABSTRACT ~ SUPERTYPE ~ ";")
-  private val abstract_supertype_declaration: P[ast.AbstractSupertypeDeclaration] = P((ABSTRACT ~ SUPERTYPE ~/ subtype_constraint.?)
+  private val abstract_supertype = P(ABSTRACT ~|~ SUPERTYPE ~|?~/ ";")
+  private val abstract_supertype_declaration: P[ast.AbstractSupertypeDeclaration] = P((ABSTRACT ~|~ SUPERTYPE ~|~/ subtype_constraint.?)
     .map(ast.AbstractSupertypeDeclaration))
 
   private val algorithm_head: P[Seq[ast.AlgorithmHeadPart]] = P((declaration.rep ~ constant_decl.? ~ local_decl.?)
@@ -37,36 +37,36 @@ trait ExpressFileStructure {
   private val constructed_types: P[ast.ConstructedType] = P(enumeration_type | select_type)
 
   private val declaration: P[ast.Declaration] = P(entity_decl | function_decl | procedure_decl | subtype_constraint_decl | type_decl)
-  private val derived_attr: P[ast.DerivedAttribute] = P((attribute_decl ~ ":" ~/ parameter_type ~ ":=" ~/ expression ~ ";" ~/)
+  private val derived_attr: P[ast.DerivedAttribute] = P((attribute_decl ~|?~ ":" ~|?~/ parameter_type ~|?~ ":=" ~|?~/ expression ~|?~ ";" ~/)
     .map(ast.DerivedAttribute.tupled))
-  private val derive_clause = P(DERIVE ~/ derived_attr.rep(1, !(INVERSE | UNIQUE | WHERE | END_ENTITY)))
+  private val derive_clause = P(spaceOrCommentsOpt ~ DERIVE ~|~/ derived_attr.rep(1, spaceOrCommentsOpt ~ !(INVERSE | UNIQUE | WHERE | END_ENTITY)))
 
   private val entity_body = P(explicit_attr_list ~ derive_clause.? ~ inverse_clause.? ~ unique_clause.? ~ where_clause.?)
 
-  private[parser] val entity_decl: P[ast.EntityDeclaration] = P((entity_head ~ entity_body ~ END_ENTITY ~ ";")
+  private[parser] val entity_decl: P[ast.EntityDeclaration] = P((entity_head ~ entity_body ~|?~ END_ENTITY ~|?~/ ";")
     .map { case (a, (b, c), (d, e, f, g, h)) => ast.EntityDeclaration(a, b, c, d, e, f, g, h) })
-  private val entity_head = P(ENTITY ~/ entity_id.map(_.name) ~ subsuper ~ ";" ~/)
+  private val entity_head = P(ENTITY ~|~/ entity_id.map(_.name) ~ subsuper ~|?~ ";" ~/)
 
-  private val enumeration_extension: P[ast.BasedOnEnumeration] = P((BASED_ON ~|~ type_ref.map(_.name) ~ (Pass ~|~ WITH ~|~ enumeration_items).?)
+  private val enumeration_extension: P[ast.BasedOnEnumeration] = P((BASED_ON ~|~ type_ref.map(_.name) ~ (spaceOrComments ~ WITH ~|~ enumeration_items).?)
     .map(ast.BasedOnEnumeration.tupled))
 
-  private val enumeration_items: P[Seq[ast.EnumerationItem]] = P(("(":P[Unit]) ~|?~/ enumeration_id.map(r => ast.EnumerationItem(r.name)).nonEmptyList ~|?~ ")")
+  private val enumeration_items: P[Seq[ast.EnumerationItem]] = P(("(": P[Unit]) ~|?~/ enumeration_id.map(r => ast.EnumerationItem(r.name)).nonEmptyList ~|?~ ")")
 
   private val enumeration_type: P[ast.EnumerationType] = P(((EXTENSIBLE ~|~/ Pass).? ~ ENUMERATION ~|~ ((OF ~|~ enumeration_items).map(Left(_)) | enumeration_extension.map(Right(_))).?)
     .map(ast.EnumerationType.tupled))
   private val escape_stmt = P(ESCAPE.to(ast.EscapeStatement) ~ ";")
-  private val explicit_attr = P(attribute_decl.nonEmptyList ~ ":" ~/ OPTIONAL.? ~ parameter_type ~ ";" ~/)
+  private val explicit_attr = P(attribute_decl.nonEmptyList ~|?~ ":" ~|?~/ (OPTIONAL ~ spaceOrComments).? ~ parameter_type ~|?~ ";" ~/)
 
-  private val explicit_attr_list: P[Seq[ast.ExplicitAttribute]] = P((!(DERIVE | INVERSE | UNIQUE | WHERE | END_ENTITY) ~ explicit_attr).rep.map(_.flatMap {
+  private val explicit_attr_list: P[Seq[ast.ExplicitAttribute]] = P((spaceOrCommentsOpt ~ !(DERIVE | INVERSE | UNIQUE | WHERE | END_ENTITY) ~ explicit_attr).rep.map(_.flatMap {
     case (names, opt, tpe) => names.map(name => ast.ExplicitAttribute(name, opt, tpe))
   }))
 
-  private val formal_parameter: P[Seq[ast.Parameter]] = P((parameter_id.nonEmptyList ~ ":" ~ parameter_type)
+  private val formal_parameter: P[Seq[ast.Parameter]] = P((parameter_id.nonEmptyList ~|?~ ":" ~|?~ parameter_type)
     .map { case (names, tpe) => names.map(name => ast.Parameter(name.name, tpe)) })
 
   private val function_decl: P[ast.FunctionDeclaration] = P((function_head ~ algorithm_head ~ stmt.rep(1) ~ END_FUNCTION ~ ";")
     .map(ast.FunctionDeclaration.tupled))
-  private val function_head = P(FUNCTION ~/ function_id.map(_.name) ~ ("(" ~/ formal_parameter.rep(1, ";").map(_.flatten) ~ ")").? ~ ":" ~/ parameter_type ~ ";" ~/)
+  private val function_head = P(FUNCTION ~|~/ function_id.map(_.name) ~|?~ (("(":P[Unit]) ~|?~/ formal_parameter.rep(1, ";" ~ spaceOrCommentsOpt).map(_.flatten) ~|?~ ")" ~ spaceOrCommentsOpt).? ~ ":" ~|?~/ parameter_type ~|?~ ";" ~/)
 
   private val if_stmt: P[ast.IfStatement] = P((IF ~/ logical_expression ~ THEN ~/ stmt.rep(1, !(ELSE | END_IF)) ~ (ELSE ~/ stmt.rep(1, !END_IF)).? ~ END_IF ~/ ";")
     .map(ast.IfStatement.tupled))
@@ -76,18 +76,18 @@ trait ExpressFileStructure {
 
   private val interface_specification: P[ast.InterfaceSpecification] = P(reference_clause | use_clause)
 
-  private val inverse_attr: P[ast.InverseAttribute] = P((attribute_decl ~ ":" ~ ((SET.to(true) | BAG.to(false)) ~ bound_spec.? ~ OF).map(ast.InverseAggregateType.tupled).? ~ entity_ref.map(_.name) ~ FOR ~ (entity_ref.map(_.name) ~ ".").? ~ attribute_ref.map(_.name) ~ ";")
+  private val inverse_attr: P[ast.InverseAttribute] = P((attribute_decl ~|?~ ":" ~|?~/ ((SET.to(true) | BAG.to(false)) ~/ bound_spec.? ~|~ OF ~/ spaceOrComments).map(ast.InverseAggregateType.tupled).? ~ entity_ref.map(_.name) ~|~ FOR ~|~ (entity_ref.map(_.name) ~ ".").? ~ attribute_ref.map(_.name) ~|?~ ";")
     .map(ast.InverseAttribute.tupled))
-  private val inverse_clause = P(INVERSE ~/ (!(UNIQUE | WHERE | END_ENTITY) ~ inverse_attr).rep(1))
+  private val inverse_clause = P(spaceOrCommentsOpt ~ INVERSE ~|~/ (!(UNIQUE | WHERE | END_ENTITY) ~ inverse_attr).rep(1, spaceOrComments.?))
 
-  private val local_decl: P[Seq[ast.LocalDeclaration]] = P(LOCAL ~ local_variable.rep(1, !END_LOCAL) ~ END_LOCAL ~ ";")
+  private val local_decl: P[Seq[ast.LocalDeclaration]] = P(LOCAL ~|~/ local_variable.rep(1, !END_LOCAL ~ spaceOrCommentsOpt) ~|?~ END_LOCAL ~|?~ ";")
 
   private val local_variable: P[ast.LocalDeclaration] = P((variable_id.map(_.name).nonEmptyList ~ ":" ~ parameter_type ~ (":=" ~ expression).? ~ ";")
     .map(ast.LocalDeclaration.tupled))
 
   private val null_stmt: P[ast.NullStatement.type] = P(";".to(ast.NullStatement))
 
-  private val one_of: P[ast.SupertypeOneOf] = P((ONEOF ~/ "(" ~/ supertype_expression.nonEmptyList ~ ")")
+  private val one_of: P[ast.SupertypeOneOf] = P((ONEOF ~|?~/ "(" ~|?~/ supertype_expression.nonEmptyList ~|?~ ")" ~/)
     .map(ast.SupertypeOneOf))
 
   private val procedure_call_stmt: P[ast.ProcedureCallStatement] = P(((built_in_procedure | procedure_ref.map(r => ast.UserDefinedProcedure(r.name))) ~ actual_parameter_list.? ~ ";")
@@ -122,17 +122,17 @@ trait ExpressFileStructure {
     .map(ast.RuleDeclaration.tupled))
   private val rule_head = P(RULE ~ rule_id.map(_.name) ~ FOR ~ "(" ~ entity_ref.map(_.name).nonEmptyList ~ ")" ~ ";")
 
-  private val schema_body: P[Seq[ast.SchemaBody]] = P(((interface_specification ~|?~ Pass).rep ~ (constant_decl ~|?~ Pass).? ~ ((declaration | rule_decl) ~|?~ Pass).rep)
+  private val schema_body: P[Seq[ast.SchemaBody]] = P(((interface_specification ~ spaceOrCommentsOpt).rep ~ (constant_decl ~|?~ Pass).? ~ ((declaration | rule_decl) ~|?~ Pass).rep)
     .map { case (a, b, c) => a ++ b ++ c })
-  private val schema_decl: P[ast.Schema] = P((SCHEMA ~|~/ schema_id.map(_.name) ~ (Pass ~|~ schema_version_id).map(_.value).? ~ Symbol(";") ~ schema_body ~ END_SCHEMA ~ Symbol(";", false))
+  private val schema_decl: P[ast.Schema] = P((SCHEMA ~|~/ schema_id.map(_.name) ~ (spaceOrComments ~ schema_version_id).map(_.value).? ~ Symbol(";") ~ schema_body ~ END_SCHEMA ~ Symbol(";", false))
     .map(ast.Schema.tupled))
 
   private val schema_version_id = P(string_literal)
   private val selector = P(expression)
-  private val select_extension = P((BASED_ON ~ type_ref.map(_.name) ~ (WITH ~ select_list).?)
+  private val select_extension = P((BASED_ON ~|~/ type_ref.map(_.name) ~ (spaceOrComments ~ WITH ~|~/ select_list).?)
     .map(ast.SelectTypeFromBasedOn.tupled))
-  private val select_list = P("(" ~ named_types.map(_.name).nonEmptyList ~ ")")
-  private val select_type: P[ast.SelectType] = P(((EXTENSIBLE ~ GENERIC_ENTITY.?).map(ast.SelectTypeExtensible).? ~ SELECT ~ (select_list.map(Left(_)) | select_extension.map(Right(_))).?)
+  private val select_list = P(("(": P[Unit]) ~|?~ (named_types ~ spaceOrCommentsOpt).map(_.name).nonEmptyList ~ ")")
+  private val select_type: P[ast.SelectType] = P(((EXTENSIBLE ~/ (spaceOrComments ~ GENERIC_ENTITY ~/).? ~|~ Pass).map(ast.SelectTypeExtensible).? ~ SELECT ~|?~/ (select_list.map(Left(_)) | select_extension.map(Right(_))).?)
     .map(ast.SelectType.tupled))
 
   private val skip_stmt: P[ast.SkipStatement.type] = P(SKIP.to(ast.SkipStatement) ~ ";")
@@ -149,14 +149,14 @@ trait ExpressFileStructure {
       assignment_stmt |
       null_stmt)
 
-  private val subsuper = P(supertype_constraint.? ~ subtype_declaration.?)
-  private val subtype_constraint: P[ast.SupertypeExpression] = P(OF ~/ "(" ~/ supertype_expression ~ ")")
+  private val subsuper = P((spaceOrComments ~ supertype_constraint).? ~ (Pass ~|~ subtype_declaration).?)
+  private val subtype_constraint: P[ast.SupertypeExpression] = P(OF ~|?~/ "(" ~|?~/ supertype_expression ~ ")")
   private val subtype_constraint_body = P(abstract_supertype.? ~ total_over.? ~ (supertype_expression ~ ";").?)
   private val subtype_constraint_decl: P[ast.SubtypeConstraintDeclaration] = P((subtype_constraint_head ~ subtype_constraint_body ~ END_SUBTYPE_CONSTRAINT ~ ";")
     .map { case (a, b, (c, d, e)) => ast.SubtypeConstraintDeclaration(a, b, c, d, e) })
   private val subtype_constraint_head = P(SUBTYPE_CONSTRAINT ~ subtype_constraint_id.map(_.name) ~ FOR ~ entity_ref.map(_.name) ~ ";")
 
-  private val subtype_declaration: P[ast.SubtypeConstraint] = P((SUBTYPE ~ OF ~ "(" ~ entity_ref.map(_.name).nonEmptyList ~ ")")
+  private val subtype_declaration: P[ast.SubtypeConstraint] = P((SUBTYPE ~|~/ OF ~|~/ "(" ~|?~/ (entity_ref ~ spaceOrCommentsOpt).map(_.name).nonEmptyList ~ ")" ~/)
     .map(ast.SubtypeConstraint))
   private val supertype_constraint: P[ast.SupertypeConstraint] = P(abstract_supertype_declaration | abstract_entity_declaration | supertype_rule)
   private val supertype_expression: P[ast.SupertypeExpression] = P(supertype_factor.rep(1, ANDOR).map {
@@ -167,27 +167,27 @@ trait ExpressFileStructure {
     case Seq(a) => a
     case lst    => ast.SupertypeSum(lst)
   })
-  private val supertype_rule: P[ast.SupertypeRule] = P((SUPERTYPE ~/ subtype_constraint)
+  private val supertype_rule: P[ast.SupertypeRule] = P((SUPERTYPE ~|~/ subtype_constraint)
     .map(ast.SupertypeRule))
-  private val supertype_term: P[ast.SupertypeExpression] = P(one_of | "(" ~/ supertype_expression ~ ")" | entity_ref.map(r => ast.UserDefinedEntity(r.name)))
+  private val supertype_term: P[ast.SupertypeExpression] = P(one_of | (("(": P[Unit]) ~|?~/ supertype_expression ~|?~ ")" ~/) | entity_ref.map(r => ast.UserDefinedEntity(r.name)))
   private val syntax: P[Seq[ast.Schema]] = P(schema_decl.rep(1))
 
   private val total_over = P(TOTAL_OVER ~ "(" ~ entity_ref.map(_.name).nonEmptyList ~ ")" ~ ";")
-  protected[parser] val type_decl: P[ast.TypeDeclaration] = P((TYPE ~|~/ type_id.map(_.name) ~ Symbol("=") ~ underlying_type ~|?~ ";" ~|?~/ (where_clause ~|?~/ Pass).? ~ END_TYPE ~ Symbol(";", false))
+  protected[parser] val type_decl: P[ast.TypeDeclaration] = P((TYPE ~|~/ type_id.map(_.name) ~ Symbol("=") ~ underlying_type ~|?~ ";" ~|?~/ (where_clause ~/ spaceOrCommentsOpt).? ~ END_TYPE ~ Symbol(";", false))
     .map(ast.TypeDeclaration.tupled))
 
   private val underlying_type: P[ast.UnderlyingType] = P(constructed_types | concrete_types)
-  private val unique_clause = P(UNIQUE ~/ unique_rule.rep(1, ";" ~ !(WHERE | END_ENTITY)) ~ ";")
-  private val unique_rule: P[ast.UniqueClause] = P(((rule_label_id.map(_.name) ~ ":" ~/).? ~ referenced_attribute.nonEmptyList)
+  private val unique_clause = P(spaceOrCommentsOpt ~ UNIQUE ~|~/ unique_rule.rep(1, (";": P[Unit]) ~|?~ !(WHERE | END_ENTITY)) ~|?~ ";")
+  private val unique_rule: P[ast.UniqueClause] = P(((rule_label_id.map(_.name) ~|?~ ":" ~/ spaceOrCommentsOpt).? ~ referenced_attribute.nonEmptyList)
     .map(ast.UniqueClause.tupled))
   private val until_control = P(UNTIL ~ logical_expression)
   private val use_clause: P[ast.UseClause] = P((USE ~ FROM ~ schema_ref.map(_.name) ~ ("(" ~ named_type_or_rename.nonEmptyList ~ ")").? ~ ";")
     .map(ast.UseClause.tupled))
 
-  private val where_clause: P[ast.WhereClause] = P((WHERE ~|~/ domain_rule.rep(1, (";": P[Unit]) ~|?~/ !(END_ENTITY | END_TYPE)) ~|?~ ";")
+  private val where_clause: P[ast.WhereClause] = P((spaceOrCommentsOpt ~ WHERE ~|~/ domain_rule.rep(1, (";": P[Unit]) ~|?~/ !(END_ENTITY | END_TYPE)) ~|?~ ";")
     .map(ast.WhereClause))
 
   private val while_control = P(WHILE ~ logical_expression)
 
-  val root = P(Pass ~|?~ syntax ~|?~ tail_remark.?.map(_ => ()) ~|?~ End)
+  val root = P(spaceOrCommentsOpt ~ syntax ~|?~ tail_remark.?.map(_ => ()) ~|?~ End)
 }
