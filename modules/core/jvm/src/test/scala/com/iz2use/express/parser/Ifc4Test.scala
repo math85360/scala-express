@@ -4,6 +4,7 @@ import com.iz2use.express.ast._
 import fastparse.all._
 import utest._
 import scala.io.Source
+import scala.collection.Seq
 
 object Ifc4Test extends TestSuite {
   val tests = TestSuite {
