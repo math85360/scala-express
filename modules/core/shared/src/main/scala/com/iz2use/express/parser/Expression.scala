@@ -12,7 +12,7 @@ trait Expression extends Literal {
   private val add_like_op: P[ast.AddLikeOp] = P(
     Symbol("+").to(ast.AdditionOp) | Symbol("-").to(ast.SubtractionOp) |
       Keyword(OR).to(ast.OrOp) | Keyword(XOR).to(ast.XorOp))
-  private val aggregate_initializer: P[ast.AggregateInitializer] = P((("[": P[Unit]) ~|?~/ element.nonEmptyList ~ "]")
+  private val aggregate_initializer: P[ast.AggregateInitializer] = P((("[": P[Unit]) ~|?~/ element.nonEmptyList.? ~ "]")
     .map(ast.AggregateInitializer.apply))
   private val aggregate_source = P(simple_expression)
   private[parser] val attribute_qualifier: P[ast.AttributeQualifier] = P(("." ~ attribute_ref.map(_.name))
@@ -60,7 +60,7 @@ trait Expression extends Literal {
   private val constant_factor: P[ast.ConstantFactor] = P(built_in_constant | constant_ref.map(_.name).map(ast.UserDefinedConstant))
   private[parser] val domain_rule: P[ast.DomainRule] = P(((rule_label_id.map(_.name) ~ Symbol(":")).? ~ expression)
     .map(ast.DomainRule.tupled))
-  private val element: P[ast.Expression] = P((expression ~ (":" ~ repetition).?)
+  private val element: P[ast.Expression] = P((expression ~ (spaceOrCommentsOpt ~ ":" ~|?~ repetition).?)
     .map {
       case (expr, Some(count)) => ast.Repetition(expr, count)
       case (expr, None)        => expr

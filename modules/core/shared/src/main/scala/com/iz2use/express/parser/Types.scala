@@ -35,9 +35,9 @@ trait Types extends Expression {
   private val general_set_type = P((SET ~/ bound_spec.? ~|~ OF ~|~/ parameter_type)
     .map((ast.SetType[ast.ParameterType] _).tupled))
 
-  private val generic_entity_type: P[ast.GenericEntityType] = P((GENERIC_ENTITY ~ (":" ~ type_label).?)
+  private val generic_entity_type: P[ast.GenericEntityType] = P((GENERIC_ENTITY ~|?~/ ((":":P[Unit]) ~|?~/ type_label).?)
     .map(ast.GenericEntityType))
-  private val generic_type: P[ast.GenericType] = P((GENERIC ~/ (":" ~/ type_label).?)
+  private val generic_type: P[ast.GenericType] = P((GENERIC ~|?~/ ((":":P[Unit]) ~|?~/ type_label).?)
     .map(ast.GenericType))
 
   private[parser] val instantiable_type: P[ast.InstantiableType] = P(concrete_types | entity_ref.map(_.name).map(ast.UserDefinedEntity))
