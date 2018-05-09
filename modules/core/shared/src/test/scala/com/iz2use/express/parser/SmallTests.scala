@@ -10,7 +10,7 @@ object SmallTests extends TestSuite {
     'Constant{
 
     }
-    'Entity{
+    'EntityIfcActor{
       val parsed = P(Parser.entity_decl ~ End).parse(
         """ENTITY IfcActor
  SUPERTYPE OF (ONEOF
@@ -27,6 +27,29 @@ END_ENTITY;""")
       }
       assertMatch(parsed) {
         case Parsed.Success(EntityDeclaration("IfcActor", Some(_), Some(_), _, _, _, _, _), _) =>
+      }
+    }
+    'EntityIfcRecurrencePattern{
+      val parsed = P(Parser.entity_decl ~ End).parse(
+        """ENTITY IfcRecurrencePattern;
+	RecurrenceType : IfcRecurrenceTypeEnum;
+	DayComponent : OPTIONAL SET [1:?] OF IfcDayInMonthNumber;
+	WeekdayComponent : OPTIONAL SET [1:?] OF IfcDayInWeekNumber;
+	MonthComponent : OPTIONAL SET [1:?] OF IfcMonthInYearNumber;
+	Position : OPTIONAL IfcInteger;
+	Interval : OPTIONAL IfcInteger;
+	Occurrences : OPTIONAL IfcInteger;
+	TimePeriods : OPTIONAL LIST [1:?] OF IfcTimePeriod;
+END_ENTITY;""")
+      assertMatch(parsed) {
+        case Parsed.Success(EntityDeclaration("IfcRecurrencePattern", None, None, Seq(
+          _,
+          ExplicitAttribute(
+            SimpleAttributeName(
+              "DayComponent"),
+            true,
+            SetType(Some(Bounds(IntegerLiteral("1"), BuiltInConstant.Unknown)), UserDefinedEntityOrType("IfcDayInMonthNumber"))),
+          _*), _, _, _, _), _) =>
       }
     }
     'Function{

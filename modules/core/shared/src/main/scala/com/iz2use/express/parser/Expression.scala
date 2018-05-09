@@ -71,7 +71,7 @@ trait Expression extends Literal {
     .map(ast.EnumerationReference.tupled))
   private[parser] val expression: P[ast.Expression] = P((simple_expression ~ (rel_op_extended ~/ simple_expression).?))
   private val factor: P[ast.Expression] = P((simple_factor ~ (Symbol("**").to(ast.PowerOp) ~ simple_factor).?))
-  private val function_call: P[ast.FunctionCallOrEntityConstructor] = P(((built_in_function | function_ref.map(_.name).map(ast.UserDefinedFunctionOrEntityConstructor)) ~ (spaceOrCommentsOpt  ~ actual_parameter_list).?)
+  private val function_call: P[ast.FunctionCallOrEntityConstructor] = P(((built_in_function | function_ref.map(_.name).map(ast.UserDefinedFunctionOrEntityConstructor)) ~ (spaceOrCommentsOpt ~ actual_parameter_list).?)
     .map(ast.FunctionCallOrEntityConstructor.tupled))
   private[parser] val group_qualifier: P[ast.GroupQualifier] = P(("\\" ~ entity_ref.map(_.name))
     .map(ast.GroupQualifier))
@@ -94,7 +94,11 @@ trait Expression extends Literal {
   private[parser] val numeric_expression: P[ast.NumericExpression] = P(simple_expression)
   private val parameter = P(expression)
   private val population = P(entity_ref)
-  private val primary: P[ast.Primary] = P(literal | (qualifiable_factor ~ qualifier.rep).map(ast.QualifiedApply.tupled))
+  private val primary: P[ast.Primary] = P(literal | (qualifiable_factor ~ qualifier.rep).map({
+    case (fac, Seq()) => fac
+    case (fac, qlfs)  => ast.QualifiedApply(fac, qlfs)
+  }))
+
   private val qualifiable_factor: P[ast.QualifiableFactor] = P((
     function_call |
     constant_factor.map({
@@ -118,7 +122,7 @@ trait Expression extends Literal {
   private val simple_factor: P[ast.Expression] = P((
     query_expression |
     interval |
-    ((unary_op ~spaceOrCommentsOpt).? ~ ((("(":P[Unit]) ~|?~ expression ~|?~ ")" ~/) | primary)).map({
+    ((unary_op ~ spaceOrCommentsOpt).? ~ ((("(": P[Unit]) ~|?~ expression ~|?~ ")" ~/) | primary)).map({
       case (Some(op), expr) => ast.UnaryOperation(op, expr)
       case (_, expr)        => expr
     }) |

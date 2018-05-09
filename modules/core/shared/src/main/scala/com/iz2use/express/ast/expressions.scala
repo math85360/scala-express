@@ -4,11 +4,12 @@ case object AbstractEntityDeclaration extends SupertypeConstraint
 case class AbstractSupertypeDeclaration(SubtypeConstraint: Option[SupertypeExpression]) extends SupertypeConstraint
 case class AggregateInitializer(items: Seq[Expression]) extends Expression
 case class AggregateType(label: Option[String], of: ParameterType) extends GeneralizedType
-sealed trait AggregationType[T] extends ConcreteType with GeneralizedType
-case class ArrayType[T](bounds: Option[Bounds], optional: Boolean, unique: Boolean, tpe: T) extends AggregationType[T]
+sealed trait AggregationType[T <: AggregationTypeLevel] extends ConcreteType with GeneralizedType
+sealed trait AggregationTypeLevel extends RootType
+case class ArrayType[T<:AggregationTypeLevel](bounds: Option[Bounds], optional: Boolean, unique: Boolean, tpe: T) extends AggregationType[T]
 case class AttributeQualifier(name: String) extends Qualifier
 
-case class BagType[T](bounds: Option[Bounds], of: T) extends AggregationType[T]
+case class BagType[T <: AggregationTypeLevel](bounds: Option[Bounds], of: T) extends AggregationType[T]
 case class BasedOnEnumeration(name: String, additionalItems: Seq[EnumerationItem])
 case class BinaryLiteral(value: collection.BitSet) extends Literal
 case class BinaryType(width: Option[Width]) extends SimpleType
@@ -61,7 +62,7 @@ object BuiltInProcedure {
 
 sealed trait ConcreteType extends InstantiableType with UnderlyingType
 sealed trait ConstantFactor
-sealed trait ConstructedType extends UnderlyingType
+sealed trait ConstructedType extends UnderlyingType with RootType
 
 case class DomainRule(name: Option[String], expr: Expression)
 
@@ -80,12 +81,12 @@ case class GenericType(label: Option[String]) extends GeneralizedType
 case class GroupQualifier(name: String) extends Qualifier
 
 case class IndexQualifier(index0: NumericExpression, index1: Option[NumericExpression]) extends Qualifier
-sealed trait InstantiableType
+sealed trait InstantiableType extends AggregationTypeLevel
 case class IntegerLiteral(value: String) extends NumberLiteral
 case object IntegerType extends SimpleType
 case class Interval(lowBound: Expression, lowInclusive: Boolean, item: Expression, highInclusive: Boolean, highBound: Expression) extends Expression
 
-case class ListType[T](bounds: Option[Bounds], unique: Boolean, tpe: T) extends AggregationType[T]
+case class ListType[T <: AggregationTypeLevel](bounds: Option[Bounds], unique: Boolean, tpe: T) extends AggregationType[T]
 sealed trait Literal extends Primary
 sealed trait LogicalExpression
 case class LogicalLiteral(value: Option[Boolean]) extends Literal
@@ -98,12 +99,12 @@ case object NumberType extends SimpleType
 sealed trait NumericExpression
 
 case class Parameter(name: String, tpe: ParameterType)
-sealed trait ParameterType
+sealed trait ParameterType extends AggregationTypeLevel
 sealed trait Primary extends Expression
 sealed trait Procedure
 case class ProcedureParameters(variable: Boolean, parameters: Seq[Parameter])
 
-sealed trait QualifiableFactor
+sealed trait QualifiableFactor extends Primary
 case class QualifiedApply(qualifiable: QualifiableFactor, qualifier: Seq[Qualifier]) extends Primary
 sealed trait Qualifier
 case class QueryExpression(variableId: String, aggregatorSource: Expression, logicalExpression: LogicalExpression) extends Expression
@@ -113,11 +114,12 @@ case class RealType(precision: Option[NumericExpression]) extends SimpleType
 case class RenamedResource(resourceRef: String, as: String)
 case class RenamedType(namedType: String, as: String)
 case class Repetition(expression: Expression, count: NumericExpression) extends Expression
+sealed trait RootType
 
 case class SelectTypeExtensible(generic: Boolean)
 case class SelectTypeFromBasedOn(name: String, additionalItems: Seq[String])
 case class SelectType(extensible: Option[SelectTypeExtensible], from: Option[Either[Seq[String], SelectTypeFromBasedOn]]) extends ConstructedType
-case class SetType[T](bounds: Option[Bounds], of: T) extends AggregationType[T]
+case class SetType[T <: AggregationTypeLevel](bounds: Option[Bounds], of: T) extends AggregationType[T]
 sealed trait SimpleType extends ConcreteType with ParameterType
 case class SingleOperation[Op <: Operator](lhs: Expression, op: Op, rhs: Expression) extends Expression
 case class StringLiteral(value: String) extends Literal
