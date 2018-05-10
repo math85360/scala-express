@@ -80,10 +80,10 @@ trait ExpressFileStructure {
     .map(ast.InverseAttribute.tupled))
   private val inverse_clause = P(spaceOrCommentsOpt ~ INVERSE ~|~/ (!(UNIQUE | WHERE | END_ENTITY) ~ inverse_attr).rep(1, spaceOrComments.?))
 
-  private val local_decl: P[Seq[ast.LocalDeclaration]] = P(LOCAL ~|~/ local_variable.rep(1, !END_LOCAL ~ spaceOrCommentsOpt) ~|?~ END_LOCAL ~|?~ ";")
+  private val local_decl: P[Seq[ast.LocalDeclaration]] = P(LOCAL ~|~/ local_variable.rep(1, !END_LOCAL ~ spaceOrCommentsOpt).map(_.flatten) ~|?~ END_LOCAL ~|?~ ";")
 
-  private val local_variable: P[ast.LocalDeclaration] = P((variable_id.map(_.name).nonEmptyList ~|?~ ":" ~|?~/ parameter_type ~ (spaceOrCommentsOpt ~ ":=" ~|?~/ expression).? ~|?~ ";")
-    .map(ast.LocalDeclaration.tupled))
+  private val local_variable: P[Seq[ast.LocalDeclaration]] = P((variable_id.map(_.name).nonEmptyList ~|?~ ":" ~|?~/ parameter_type ~ (spaceOrCommentsOpt ~ ":=" ~|?~/ expression).? ~|?~ ";")
+    .map({ case (names, tpe, exprOpt) => names.map({ name => ast.LocalDeclaration(name, tpe, exprOpt) }) }))
 
   private val null_stmt: P[ast.NullStatement.type] = P(";".to(ast.NullStatement))
 

@@ -20,11 +20,15 @@ object GenerateIfcRoot extends TestSuite {
           ast.ExplicitAttribute(ast.SimpleAttributeName("Name"), true, ast.UserDefinedEntityOrType("IfcLabel")),
           ast.ExplicitAttribute(ast.SimpleAttributeName("Description"), true, ast.UserDefinedEntityOrType("IfcText"))), Nil, Nil, Nil, None)
       val result = showCode(Transformer(entity))
-      val expected = showCode(q"""trait IfcRoot {
+      val expected = showCode(q"""package `com.iz2use.express.generated.schema` {
+trait IfcRoot {
   def globalId: IfcGloballyUniqueId
   def ownerHistory: Option[IfcOwnerHistory]
   def name: Option[IfcLabel]
   def description: Option[IfcText]
+}
+object IfcRoot {
+}
 }""")
       assert(result == expected)
     }
@@ -44,7 +48,8 @@ object GenerateIfcRoot extends TestSuite {
           Nil, Nil, Nil, None)
 
 val result = showCode(Transformer(entity))
-val expected = showCode(q"""class IfcRecurrencePattern {
+val expected = showCode(q"""package `com.iz2use.express.generated.schema` {
+class IfcRecurrencePattern {
   def recurrenceType: IfcRecurrenceTypeEnum
   def dayComponent: Option[Set[IfcDayInMonthNumber] Refined NonEmpty]
   def weekdayComponent: Option[Set[IfcDayInWeekNumber] Refined NonEmpty]
@@ -53,6 +58,9 @@ val expected = showCode(q"""class IfcRecurrencePattern {
   def interval: Option[IfcInteger]
   def occurrences: Option[IfcInteger]
   def timePeriods: Option[List[IfcTimePeriod] Refined NonEmpty]
+}
+object IfcRecurrencePattern {
+}
 }""")
 assert(result == expected)
     }

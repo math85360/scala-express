@@ -4,9 +4,11 @@ case object AbstractEntityDeclaration extends SupertypeConstraint
 case class AbstractSupertypeDeclaration(SubtypeConstraint: Option[SupertypeExpression]) extends SupertypeConstraint
 case class AggregateInitializer(items: Seq[Expression]) extends Expression
 case class AggregateType(label: Option[String], of: ParameterType) extends GeneralizedType
-sealed trait AggregationType[T <: AggregationTypeLevel] extends ConcreteType with GeneralizedType
+sealed trait AggregationType[T <: AggregationTypeLevel] extends ConcreteType with GeneralizedType {
+  def of: T
+}
 sealed trait AggregationTypeLevel extends RootType
-case class ArrayType[T<:AggregationTypeLevel](bounds: Option[Bounds], optional: Boolean, unique: Boolean, tpe: T) extends AggregationType[T]
+case class ArrayType[T <: AggregationTypeLevel](bounds: Option[Bounds], optional: Boolean, unique: Boolean, of: T) extends AggregationType[T]
 case class AttributeQualifier(name: String) extends Qualifier
 
 case class BagType[T <: AggregationTypeLevel](bounds: Option[Bounds], of: T) extends AggregationType[T]
@@ -86,7 +88,7 @@ case class IntegerLiteral(value: String) extends NumberLiteral
 case object IntegerType extends SimpleType
 case class Interval(lowBound: Expression, lowInclusive: Boolean, item: Expression, highInclusive: Boolean, highBound: Expression) extends Expression
 
-case class ListType[T <: AggregationTypeLevel](bounds: Option[Bounds], unique: Boolean, tpe: T) extends AggregationType[T]
+case class ListType[T <: AggregationTypeLevel](bounds: Option[Bounds], unique: Boolean, of: T) extends AggregationType[T]
 sealed trait Literal extends Primary
 sealed trait LogicalExpression
 case class LogicalLiteral(value: Option[Boolean]) extends Literal

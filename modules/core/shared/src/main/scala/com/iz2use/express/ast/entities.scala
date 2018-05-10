@@ -20,7 +20,7 @@ case class EntityDeclaration(
 
 case class FunctionDeclaration(name: String, parameters: Seq[Parameter], tpe: ParameterType, head: Seq[AlgorithmHeadPart], body: Seq[Statement]) extends Declaration
 
-case class LocalDeclaration(variableNames: Seq[String], parameters: ParameterType, defaultExpression: Option[Expression]) extends AlgorithmHeadPart
+case class LocalDeclaration(variableName: String, parameters: ParameterType, defaultExpression: Option[Expression]) extends AlgorithmHeadPart
 
 
 case class ProcedureDeclaration(name: String, parameters: Option[ProcedureParameters], head: Seq[AlgorithmHeadPart], body: Seq[Statement]) extends Declaration

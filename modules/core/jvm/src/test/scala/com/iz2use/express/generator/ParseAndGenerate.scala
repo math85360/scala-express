@@ -15,8 +15,17 @@ object ParseAndGenerate extends TestSuite {
     import ScalaDefinition.universe.showCode
     val source = Source.fromInputStream(getClass.getResourceAsStream("/IFC4.exp")).mkString
 
-    val Parsed.Success(Seq(ast.Schema(_, _, items)), _) = Parser.root.parse(source)
+    val Parsed.Success(Seq(schema), _) = Parser.root.parse(source)
 
+    for ((filename, tree) <- Transformer(schema)) {
+      val code = showCode(tree)
+      
+      val file = new File(s"target/$filename.scala")
+      val pw = new PrintWriter(file)
+      pw.write(code)
+      pw.close
+    }
+    /**
     items foreach { e =>
       val transformed = showCode(Transformer(e))
       val name = e match {
@@ -31,7 +40,7 @@ object ParseAndGenerate extends TestSuite {
       pw.close
       assert(transformed != "")
     }
-
+**/
     /*'Types{
       items collect {
         case e: ast.TypeDeclaration =>
