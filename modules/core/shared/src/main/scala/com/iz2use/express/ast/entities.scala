@@ -11,7 +11,7 @@ case class ConstantDeclaration(constantId: String, tpe: InstantiableType, expres
 case class EntityDeclaration(
   name:              String,
   supertype:         Option[SupertypeConstraint],
-  subtype:           Option[SubtypeConstraint],
+  subtype:           Seq[String],
   attributes:        Seq[ExplicitAttribute],
   derivedAttributes: Seq[DerivedAttribute],
   inverseAttributes: Seq[InverseAttribute],

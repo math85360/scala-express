@@ -75,7 +75,7 @@ case class EnumerationType(extensible: Boolean, items: Option[Either[Seq[Enumera
 sealed trait Expression extends NumericExpression with LogicalExpression
 
 sealed trait FunctionOrEntityConstructor
-case class FunctionCallOrEntityConstructor(functionOrEntity: FunctionOrEntityConstructor, parameterList: Seq[Expression]) extends QualifiableFactor with Expression
+case class FunctionCallOrEntityConstructor(functionOrEntity: FunctionOrEntityConstructor, parameterList: Option[Seq[Expression]]) extends QualifiableFactor with Expression
 
 sealed trait GeneralizedType extends ParameterType
 case class GenericEntityType(label: Option[String]) extends GeneralizedType
@@ -126,7 +126,6 @@ sealed trait SimpleType extends ConcreteType with ParameterType
 case class SingleOperation[Op <: Operator](lhs: Expression, op: Op, rhs: Expression) extends Expression
 case class StringLiteral(value: String) extends Literal
 case class StringType(width: Option[Width]) extends SimpleType
-case class SubtypeConstraint(entities: Seq[String])
 sealed trait SupertypeConstraint
 sealed trait SupertypeExpression
 case class SupertypeOneOf(items: Seq[SupertypeExpression]) extends SupertypeExpression

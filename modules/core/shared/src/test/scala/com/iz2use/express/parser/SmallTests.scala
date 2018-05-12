@@ -26,7 +26,7 @@ END_ENTITY;""")
         case _ =>
       }
       assertMatch(parsed) {
-        case Parsed.Success(EntityDeclaration("IfcActor", Some(_), Some(_), _, _, _, _, _), _) =>
+        case Parsed.Success(EntityDeclaration("IfcActor", Some(_), Seq("IfcObject"), _, _, _, _, _), _) =>
       }
     }
     'EntityIfcRecurrencePattern{
@@ -42,7 +42,7 @@ END_ENTITY;""")
 	TimePeriods : OPTIONAL LIST [1:?] OF IfcTimePeriod;
 END_ENTITY;""")
       assertMatch(parsed) {
-        case Parsed.Success(EntityDeclaration("IfcRecurrencePattern", None, None, Seq(
+        case Parsed.Success(EntityDeclaration("IfcRecurrencePattern", None, Nil, Seq(
           _,
           ExplicitAttribute(
             SimpleAttributeName(

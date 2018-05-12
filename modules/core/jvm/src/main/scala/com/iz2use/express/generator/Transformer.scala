@@ -7,8 +7,35 @@ import scala.annotation.tailrec
 trait Dictionary {
   def add[A](value: A): Unit
 }
-case class TransformerContext(target: String = ("com.iz2use.express.generated.schema")) {
+case class TransformerContext(private val rootPackage: String = "") {
   //private var names: Map[String, ast.SchemaBody] = Map.empty
+  private var packageStack: List[Seq[String]] = rootPackage match {
+    case "" => List()
+    case r  => List(r.split('.'))
+  }
+  private var currentPackage: List[String] = packageStack.reverse.flatten
+  def withPackage[A](name: String)(f: => A): A = {
+    val oldCurrentPackage = currentPackage
+    packageStack = name.split('.') :: packageStack
+    val newCurrentPackage = packageStack.reverse.flatten
+    currentPackage = newCurrentPackage
+    val r = f
+    packageStack = packageStack.tail
+    currentPackage = oldCurrentPackage
+    r
+  }
+  def find(name: String): Option[Any] = {
+    @tailrec
+    def loop(rest: List[Map[String, Any]]): Option[Any] = rest match {
+      case Nil => None
+      case head :: tail => head.get(name) match {
+        case None  => loop(tail)
+        case found => found
+      }
+    }
+    loop(stack)
+  }
+  def targetPackage = currentPackage
   private var stack: List[Map[String, Any]] = List(Map.empty)
   def register[A](key: String, value: A): Unit = {
     if (key.nonEmpty) {
@@ -16,11 +43,22 @@ case class TransformerContext(target: String = ("com.iz2use.express.generated.sc
       stack = newMap :: stack.tail
     }
   }
+  def getExactName(name: String): String = {
+    @tailrec
+    def loop(rest: List[Map[String, Any]]): String = rest match {
+      case Nil => name
+      case head :: tail =>
+        head.find(_._1.equalsIgnoreCase(name)) match {
+          case Some((found, _)) => found
+          case None             => loop(tail)
+        }
+    }
+    loop(stack)
+  }
   def pushContext: Unit = stack = Map.empty[String, Any] :: stack
   def popContext: Unit = stack = stack.tail
 }
 object TransformerContext {
-  implicit def ctx = TransformerContext()
 }
 abstract class Transformer[-A, B] {
   def addToDictionary(a: A)(implicit context: TransformerContext): Unit
@@ -59,14 +97,27 @@ case class ScalaType() extends ScalaDefinition
 object ScalaDefinition {
   val universe: scala.reflect.runtime.universe.type = scala.reflect.runtime.universe
   import universe.{ Transformer => _, _ }
+  val defaultImports = Seq(
+    q"import com.iz2use.express.syntax._",
+    q"import eu.timepit.refined._",
+    q"import eu.timepit.refined.api._",
+    q"import eu.timepit.refined.boolean._",
+    q"import eu.timepit.refined.collection._",
+    q"import eu.timepit.refined.numeric._",
+    q"import eu.timepit.refined.string._")
 
-  val valNameTransformer: String => universe.TermName = { name =>
-    TermName(name.head.toLower +: name.tail)
+  implicit class RichString(s: String) {
+    def lowerFirst = s.head.toLower +: s.tail
+  }
+  implicit class RichListString(s: List[String]) {
+    def asPackage = s match {
+      case head :: second :: tail => tail.foldLeft[universe.RefTree](q"""${TermName(head)}.${TermName(second)}""")((acc, v) => q"""$acc.${TermName(v)}""")
+    }
   }
 
   implicit val attributeNameTransformer: Transformer[ast.AttributeName, universe.TermName] = Transformer.instance { implicit ctx =>
     {
-      case ast.SimpleAttributeName(name) => valNameTransformer(name)
+      case ast.SimpleAttributeName(name) => TermName(name.lowerFirst)
     }
   }
 
@@ -75,9 +126,12 @@ object ScalaDefinition {
       case ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Unknown) =>
         tq"""NonEmpty"""
       case ast.Bounds(ast.IntegerLiteral(min), ast.IntegerLiteral(max)) =>
-        tq"""And[MinSize, MaxSize]"""
-      case ast.Bounds(ast.IntegerLiteral(min), ast.BuiltInConstant.Unknown) =>
-        tq"""MinSize"""
+        if (min == max)
+          tq"""Size[W.${TermName(s"`$min`")}.T]"""
+        else
+          tq"""And[MinSize[W.${TermName(s"`$min`")}.T], MaxSize[W.${TermName(s"`$max`")}.T]]"""
+      //case ast.Bounds(ast.IntegerLiteral(min), ast.BuiltInConstant.Unknown) =>
+      //tq"""MinSize"""
       case _ =>
         tq"""NotFound"""
       /*case ast.Bounds(ast.IntegerLiteral(min), ast.BuiltInConstant.Unknown) =>
@@ -90,6 +144,14 @@ q"""MinSize[W.`$min`.T]"""*/
     case Some(bounds) =>
       val tpt = Transformer(bounds)
       tq"""$tpe Refined $tpt"""
+  }
+
+  def referenceToEntity(name: String)(implicit ctx: TransformerContext): universe.Tree = {
+    val tpe = Ident(TermName(name))
+    ctx.find(name) match {
+      case Some(a: ast.EntityDeclaration) => tq"""RefTo[$tpe]"""
+      case _                              => tpe
+    }
   }
   implicit val rootTypeTransformer: Transformer[ast.RootType, universe.Tree] = Transformer.instance { implicit ctx =>
     {
@@ -125,18 +187,22 @@ q"""MinSize[W.`$min`.T]"""*/
         val tpt = Transformer(of)
         composeWithBounds(tq"""Set[$tpt]""", boundsOpt)
       case ast.StringType(maxLength) =>
-        /*maxLength match {
-  case None => tq"""String"""
-  case Some(length) => tq"""String Refined MaxSize"""
-}*/
-        tq"""String"""
-      case ast.UserDefinedEntity(tpe)       => Ident(TermName(tpe))
-      case ast.UserDefinedEntityOrType(tpe) => Ident(TermName(tpe))
-      case ast.UserDefinedType(tpe)         => Ident(TermName(tpe))
+        maxLength match {
+          case Some(ast.Width(ast.IntegerLiteral(length), fixed)) =>
+            val size = tq"""W.${TermName(s"`$length`")}.T"""
+            fixed match {
+              case true  => tq"""String Refined Size[$size]"""
+              case false => tq"""String Refined MaxSize[$size]"""
+            }
+          case None => tq"""String"""
+        }
+      case ast.UserDefinedEntity(tpe)       => referenceToEntity(tpe)
+      case ast.UserDefinedEntityOrType(tpe) => referenceToEntity(tpe)
+      case ast.UserDefinedType(tpe)         => referenceToEntity(tpe)
     }
   }
   //implicit val parameterType: Transformer[ast.ParameterType,universe.Tree] = aggregationTypeLevel
-  implicit val attributeTransformer: Transformer[ast.ExplicitAttribute, universe.Tree] = Transformer.instance { implicit ctx =>
+  val attributeToDefTransformer: Transformer[ast.ExplicitAttribute, universe.Tree] = Transformer.instance { implicit ctx =>
     {
       case ast.ExplicitAttribute(attributeName, optional, tpe) =>
         val defName = Transformer(attributeName)
@@ -148,10 +214,20 @@ q"""MinSize[W.`$min`.T]"""*/
         q"""def $defName : $optionalType"""
     }
   }
+  val attributeToValTransformer: Transformer[ast.ExplicitAttribute, universe.Tree] = Transformer.instance { implicit ctx =>
+    {
+      case ast.ExplicitAttribute(attributeName, optional, tpe) =>
+        val defName = Transformer(attributeName)
+        val tpt = Transformer(tpe)
+        optional match {
+          case false => q"val $defName : $tpt"
+          case true  => q"val $defName : Option[$tpt] = None"
+        }
+    }
+  }
   implicit val entityTransformer = Transformer.typeInstance[ast.EntityDeclaration, universe.Tree](_.name) { implicit ctx =>
     { entity =>
       val tname = TypeName(entity.name)
-      val stats = entity.attributes.map(Transformer(_))
       val whereRules = entity.whereClause match {
         case Some(ast.WhereClause(whereClauses)) =>
           var defaultNumber: Int = 0
@@ -162,34 +238,53 @@ q"""MinSize[W.`$min`.T]"""*/
                 s"WhereRule$defaultNumber"
               })
               val whereRuleType = TypeName(whereRule)
-              val whereRuleName = valNameTransformer(whereRule)
+              val whereRuleName = TermName(whereRule.lowerFirst)
               Seq(
                 q"""final case class $whereRuleType()""",
                 q"""val $whereRuleName : Validate[$tname, $whereRuleType] = Validate.fromPredicate(e => ???, e => ???, ${TermName(whereRule)}())""")
           }
         case None => Nil
       }
+      @tailrec
+      def loop(supertypes: Seq[ast.EntityDeclaration], parents: Seq[String]): Seq[ast.EntityDeclaration] =
+        parents match {
+          case Seq() => supertypes
+          case Seq(head, tail @ _*) =>
+            val r = ctx.find(head)
+            r match {
+              case Some(e: ast.EntityDeclaration) => loop(e +: supertypes, e.subtype ++ tail)
+              case None                           => loop(supertypes, tail)
+            }
+        }
+      val parents = entity.subtype.map(TermName(_))
+      val parentEntities = loop(Nil, entity.subtype)
       val cname = TermName(entity.name)
-      if (entity.supertype.isDefined)
-        q"""package ${TermName(ctx.target)} {
+      if (entity.supertype.isDefined) {
+        val stats = entity.attributes.map(attributeToDefTransformer.transform(_))
+        q"""
+..$defaultImports
 
-  trait $tname {
-  ..$stats
-  }
-  object $cname {
+trait $tname extends ..$parents {
+..$stats
+}
+object $cname {
+..$whereRules
+}
+"""
+      } else {
+
+        val paramss = List((parentEntities.flatMap(_.attributes) ++ entity.attributes).map(attributeToValTransformer.transform(_)))
+        q"""
+..$defaultImports
+
+final case class $tname(...$paramss) extends ..$parents {
+ 
+}
+
+object $cname {
   ..$whereRules
-  }
 }"""
-      else
-        q"""package ${TermName(ctx.target)} {
-      
-  class $tname {
-  ..$stats
-  }
-  object $cname {
-  ..$whereRules
-  }
-}"""
+      }
     }
   }
 
@@ -204,9 +299,30 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
-  implicit val expressionTransformer: Transformer[ast.Expression, universe.Tree] = Transformer.instance { implicit ctx => _ =>
-    q""" null  """
+  implicit val expressionTransformer: Transformer[ast.Expression, universe.Tree] = Transformer.instance { implicit ctx =>
+    {
+      case ast.SingleOperation(lhs, op, rhs) => op match {
+        case ast.IN => q""" ${Transformer(rhs)}.contains(${Transformer(lhs)}) """
+        case _      => q""" null """
+      }
+      //case ast.MultipleOperation(lhs, subops) =>
+      case ast.UnaryOperation(ast.NotOp, expr) => q""" !${Transformer(expr)} """
+      case ast.FunctionCallOrEntityConstructor(called, args) =>
+        val target = called match {
+          case f: ast.BuiltInFunction => q""" ${TermName(f.toString().lowerFirst)} """
+          case ast.UserDefinedFunctionOrEntityConstructor(name) =>
+            q""" ${TermName(ctx.getExactName(name))} """
+        }
+        args match {
+          case Some(args) =>
+            q""" $target(..${args.map(Transformer(_))}) """
+          case None =>
+            target
+        }
+      case _ => q""" null """
+    }
   }
+
   implicit val logicalExpressionTransformer: Transformer[ast.LogicalExpression, universe.Tree] = Transformer.instance { implicit ctx =>
     {
       case e: ast.Expression => expressionTransformer.transform(e)
@@ -236,7 +352,8 @@ q"""MinSize[W.`$min`.T]"""*/
       case ast.ConstantDeclaration(name, tpe, expr) =>
         ctx.register(name, tpe)
         q"""val ${TermName(name)} : ${Transformer(tpe)} = ${Transformer(expr)} """
-      case ast.LocalDeclaration(name, tpe, expr) =>
+      case ast.LocalDeclaration(_name, tpe, expr) =>
+        val name = _name.lowerFirst
         ctx.register(name, tpe)
 
         expr match {
@@ -248,56 +365,75 @@ q"""MinSize[W.`$min`.T]"""*/
 
   implicit val functionTransformer: Transformer[ast.FunctionDeclaration, universe.Tree] = Transformer.typeInstance[ast.FunctionDeclaration, universe.Tree](_.name) { implicit ctx =>
     { function =>
+      ctx.pushContext
       val name = TermName(function.name)
       val tpt = Transformer(function.tpe)
       val genericTpts = function.parameters.collect({
         case ast.Parameter(_, HasGenericType(name)) =>
           name
-      }).distinct.map(name => TypeDef(Modifiers(), TypeName(name), Nil, q""))
+      }).distinct.map({ name =>
+        ctx.register(name, null)
+        TypeDef(Modifiers(), TypeName(name), Nil, q"")
+      })
       val paramss = function.parameters.map({
         case ast.Parameter(name, argTpe) =>
-          val argName = valNameTransformer(name)
-          q"""val $argName : ${Transformer(argTpe)}"""
+          val argName = TermName(name.lowerFirst)
+          val targetTpe = Transformer(argTpe)
+          ctx.register(name.lowerFirst, targetTpe)
+          q"""val $argName : $targetTpe"""
       })
       val head = function.head.map(Transformer(_)(algorithmHeadTransformer, ctx))
       val body = function.body.map(Transformer(_))
-      q"""package ${TermName(ctx.target)} {
-  object $name {
-    def apply[..$genericTpts](..$paramss): $tpt = {
-      ..$head
-      ..$body
-    }
+      ctx.popContext
+      q"""
+..$defaultImports
+
+object $name {
+  def apply[..$genericTpts](..$paramss): $tpt = {
+    ..$head
+    ..$body
   }
-}"""
+}
+"""
     }
   }
 
-  implicit val schemaTransformer: Transformer[ast.Schema, Seq[(String, universe.Tree)]] = Transformer.instance { implicit ctx =>
+  implicit val schemaTransformer: Transformer[ast.Schema, Seq[(String, String, universe.Tree)]] = Transformer.instance { implicit ctx =>
     { schema =>
-      schema.body.foreach(Transformer.addToDictionary(_))
+      ctx.withPackage(schema.id) {
+        schema.body.foreach(Transformer.addToDictionary(_))
 
-      val name = TermName(schema.id)
+        //val targetPackage = ctx.targetPackage
 
-      val types = schema.body collect {
-        case e: ast.TypeDeclaration => Transformer(e)
+        val (packageParent, name) = ctx.targetPackage match {
+          case Seq(one) => (List("_root_"), one)
+          case lst      => (lst.init, lst.last)
+        }
+
+        val types = schema.body collect {
+          case e: ast.TypeDeclaration => Transformer(e)
+        }
+
+        val rules = Seq[universe.Tree]()
+
+        val mainDeclaration = ((ctx.targetPackage :+ "package").mkString("."), packageParent.mkString("."), q"""
+
+..$defaultImports
+
+package object ${TermName(name)} {
+  ..$types
+  ..$rules
+}
+""")
+
+        val target = ctx.targetPackage.mkString(".")
+        val independentDeclarations = schema.body.collect {
+          case e @ ast.EntityDeclaration(name, _, _, _, _, _, _, _) => ((ctx.targetPackage :+ name).mkString("."), target, Transformer(e))
+          case e @ ast.FunctionDeclaration(name, _, _, __, _)       => ((ctx.targetPackage :+ name).mkString("."), target, Transformer(e))
+        }
+
+        mainDeclaration +: independentDeclarations
       }
-
-      val rules = Seq[universe.Tree]()
-
-      val mainDeclaration = "package" -> q"""package ${TermName(ctx.target)} {
-
-  package object $name {
-    ..$types
-    ..$rules
-  }
-}"""
-
-      val independentDeclarations = schema.body.collect {
-        case e @ ast.EntityDeclaration(name, _, _, _, _, _, _, _) => name -> Transformer(e)
-        case e @ ast.FunctionDeclaration(name, _, _, __, _)       => name -> Transformer(e)
-      }
-
-      mainDeclaration +: independentDeclarations
     }
   }
 
@@ -322,10 +458,33 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
-  implicit val schemaBodyTransformer = Transformer.instance[ast.SchemaBody, universe.Tree] { implicit ctx =>
-    {
+  /**
+   * abstract class Transformer[-A, B] {
+   * def addToDictionary(a: A)(implicit context: TransformerContext): Unit
+   * def transform(a: A)(implicit context: TransformerContext): B
+   * }
+   */
+  //def emptyTransformer[A](a: A)(pf: A => String) =
+  class EmptyTransformer(name: String) extends Transformer[Any, universe.Tree] {
+    def addToDictionary(a: Any)(implicit context: TransformerContext): Unit = {
+      context.register(name, a)
+    }
+    def transform(a: Any)(implicit context: TransformerContext): universe.Tree = q""
+  }
+
+  def emptyTransformer(name: String = "") = new EmptyTransformer(name)
+
+  implicit val schemaBodyTransformer = new Transformer[ast.SchemaBody, universe.Tree] {
+    def addToDictionary(a: ast.SchemaBody)(implicit context: TransformerContext): Unit = a match {
+      case e: ast.EntityDeclaration   => entityTransformer.addToDictionary(e)
+      case e: ast.FunctionDeclaration => functionTransformer.addToDictionary(e)
+      case e: ast.RuleDeclaration     =>
+      case e: ast.TypeDeclaration     => typeTransformer.addToDictionary(e)
+    }
+
+    def transform(a: ast.SchemaBody)(implicit context: TransformerContext): universe.Tree = a match {
       case e: ast.EntityDeclaration   => Transformer(e)
-      case e: ast.FunctionDeclaration => Transformer(e)
+      case e: ast.FunctionDeclaration => Transformer(e)(emptyTransformer(e.name), context)
       case e: ast.RuleDeclaration     => q""" def test() : Unit = {} """
       case e: ast.TypeDeclaration     => Transformer(e)
     }

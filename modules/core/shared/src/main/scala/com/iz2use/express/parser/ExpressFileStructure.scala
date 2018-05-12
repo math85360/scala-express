@@ -156,8 +156,7 @@ trait ExpressFileStructure {
     .map { case (a, b, (c, d, e)) => ast.SubtypeConstraintDeclaration(a, b, c, d, e) })
   private val subtype_constraint_head = P(SUBTYPE_CONSTRAINT ~ subtype_constraint_id.map(_.name) ~ FOR ~ entity_ref.map(_.name) ~ ";")
 
-  private val subtype_declaration: P[ast.SubtypeConstraint] = P((SUBTYPE ~|~/ OF ~|~/ "(" ~|?~/ (entity_ref ~ spaceOrCommentsOpt).map(_.name).nonEmptyList ~ ")" ~/)
-    .map(ast.SubtypeConstraint))
+  private val subtype_declaration: P[Seq[String]] = P((SUBTYPE ~|~/ OF ~|~/ "(" ~|?~/ (entity_ref ~ spaceOrCommentsOpt).map(_.name).nonEmptyList ~ ")" ~/))
   private val supertype_constraint: P[ast.SupertypeConstraint] = P(abstract_supertype_declaration | abstract_entity_declaration | supertype_rule)
   private val supertype_expression: P[ast.SupertypeExpression] = P(supertype_factor.rep(1, ANDOR).map {
     case Seq(a) => a
