@@ -5,7 +5,7 @@ import eu.timepit.refined.api.Refined
 import eu.timepit.refined.auto._
 import eu.timepit.refined.collection._
 import eu.timepit.refined.numeric._
-import com.iz2use.express.step._
+//import com.iz2use.express.step._
 import shapeless.Coproduct
 
 trait StepEntity { self =>

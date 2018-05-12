@@ -5,8 +5,8 @@ import eu.timepit.refined.api.Refined
 import eu.timepit.refined.collection._
 //import eu.timepit.refined.auto._
 import utest._
-import com.iz2use.express.step._
-import com.iz2use.express.step.syntax._
+import com.iz2use.express.p21._
+import com.iz2use.express.p21.syntax._
 
 object WallTest extends TestSuite {
   val tests = TestSuite {

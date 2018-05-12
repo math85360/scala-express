@@ -74,12 +74,13 @@ def expressCrossModule(path: String, crossType: CrossType = CrossType.Full) = {
     .jvmSettings()
 }
 
-lazy val expressJsModules = Seq[Project](coreJS)
-lazy val expressJvmModules = Seq[Project](core)
+lazy val expressJsModules = Seq[Project]()
+lazy val expressJvmModules = Seq[Project](gen)
 
 lazy val expressCrossModules = Seq[(Project, Project)](
-  (core, coreJS),
-  (step, stepJS),
+  (syntax, syntaxJS),
+  (p11, p11JS),
+  (p21, p21JS),
   (ifc, ifcJS)
 )
 
@@ -108,13 +109,13 @@ lazy val root = project.in(file("."))
     initialCommands in console :=
       """
         |import com.iz2use.express._
-        |import com.iz2use.express.step._
+        |import com.iz2use.express.p21._
         |import com.iz2use.express.ifc._
       """.stripMargin
   )
   .aggregate(aggregatedProjects: _*)
 
-lazy val coreBase = expressCrossModule("core")
+lazy val p11Base = expressCrossModule("p11")
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % catsVersion,
@@ -126,20 +127,52 @@ lazy val coreBase = expressCrossModule("core")
       "eu.timepit" %%% "refined-scalacheck" % refinedVersion % Test
     )
   )
-lazy val core = coreBase.jvm
-lazy val coreJS = coreBase.js
+lazy val p11 = p11Base.jvm
+lazy val p11JS = p11Base.js
 
-lazy val stepBase = expressCrossModule("step")
+lazy val syntaxBase = expressCrossModule("syntax")
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % catsVersion,
+      "com.chuusai" %%% "shapeless" % shapelessVersion,
+      "com.chuusai" %%% "shapeless" % shapelessVersion % Test,
+      "com.lihaoyi" %%% "fastparse" % fastparseVersion,
+      "com.lihaoyi" %%% "fastparse" % fastparseVersion % Test,
+      "eu.timepit" %%% "refined" % refinedVersion,
+      "eu.timepit" %%% "refined-scalacheck" % refinedVersion % Test
+    )
+  )
+
+lazy val syntax = syntaxBase.jvm
+lazy val syntaxJS = syntaxBase.js
+
+lazy val gen = expressModule("gen")
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % catsVersion,
+      "com.chuusai" %%% "shapeless" % shapelessVersion,
+      "com.chuusai" %%% "shapeless" % shapelessVersion % Test,
+      "com.lihaoyi" %%% "fastparse" % fastparseVersion,
+      "com.lihaoyi" %%% "fastparse" % fastparseVersion % Test,
+      "eu.timepit" %%% "refined" % refinedVersion,
+      "eu.timepit" %%% "refined-scalacheck" % refinedVersion % Test
+    )
+  )
+  .dependsOn(p11)
+
+lazy val p21Base = expressCrossModule("p21")
   .settings()
-  .dependsOn(coreBase)
-lazy val step = stepBase.jvm
-lazy val stepJS = stepBase.js
+  .dependsOn(syntaxBase)
+lazy val p21 = p21Base.jvm
+lazy val p21JS = p21Base.js
 
 lazy val ifcBase = expressCrossModule("ifc")
   .settings(
     libraryDependencies += "org.typelevel" %%% "squants" % "1.3.0"
   )
-  .dependsOn(stepBase, stepBase % Test)
+  .dependsOn(syntaxBase, syntaxBase % Test)
+  .dependsOn(p21Base, p21Base % Test)
+
 lazy val ifc = ifcBase.jvm
 lazy val ifcJS = ifcBase.js
 
