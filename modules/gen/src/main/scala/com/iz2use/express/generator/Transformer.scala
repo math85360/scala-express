@@ -146,10 +146,16 @@ q"""MinSize[W.`$min`.T]"""*/
   }
 
   def referenceToEntity(name: String)(implicit ctx: TransformerContext): universe.Tree = {
-    val tpe = Ident(TermName(name))
+    def tpe(suffix: String = "") = Ident(TermName(name + suffix))
     ctx.find(name) match {
-      case Some(a: ast.EntityDeclaration) => tq"""RefTo[$tpe]"""
-      case _                              => tpe
+      case Some(a: ast.EntityDeclaration) =>
+        val target = a match {
+          case HasAbstract() => tpe("Abstract")
+          case _             => tpe()
+        }
+        tq"""RefTo[$target]"""
+      case _ =>
+        tpe()
     }
   }
   implicit val rootTypeTransformer: Transformer[ast.RootType, universe.Tree] = Transformer.instance { implicit ctx =>
@@ -224,9 +230,33 @@ q"""MinSize[W.`$min`.T]"""*/
         }
     }
   }
+
+  object HasAbstract {
+    def unapply(entity: ast.EntityDeclaration): Boolean = entity.supertype match {
+      case Some(ast.AbstractEntityDeclaration) => true
+      case Some(ast.AbstractSupertypeDeclaration(Some(ast.SupertypeOneOf(_)))) => true
+      case Some(ast.SupertypeRule(ast.SupertypeOneOf(_))) => true
+      case Some(other) => throw new NotImplementedError(s"$other not supported for entity")
+      case _ => false
+    }
+  }
+
+  object HasConcrete {
+    def unapply(entity: ast.EntityDeclaration): Boolean = entity.supertype match {
+      case Some(ast.AbstractEntityDeclaration) => false
+      case Some(ast.AbstractSupertypeDeclaration(Some(ast.SupertypeOneOf(_)))) => false
+      case Some(ast.SupertypeRule(ast.SupertypeOneOf(_))) => true
+      case Some(other) => throw new NotImplementedError(s"$other not supported for entity")
+      case _ => true
+    }
+  }
+
   implicit val entityTransformer = Transformer.typeInstance[ast.EntityDeclaration, universe.Tree](_.name) { implicit ctx =>
     { entity =>
       val tname = TypeName(entity.name)
+      val aname = TypeName(entity.name + "Abstract")
+      val isAbstract = HasAbstract.unapply(entity)
+      val cname = if (isAbstract) aname else tname
       val whereRules = entity.whereClause match {
         case Some(ast.WhereClause(whereClauses)) =>
           var defaultNumber: Int = 0
@@ -240,7 +270,7 @@ q"""MinSize[W.`$min`.T]"""*/
               val whereRuleName = TermName(whereRule.lowerFirst)
               Seq(
                 q"""final case class $whereRuleType()""",
-                q"""val $whereRuleName : Validate[$tname, $whereRuleType] = Validate.fromPredicate(e => ???, e => ???, ${TermName(whereRule)}())""")
+                q"""val $whereRuleName : Validate[$cname, $whereRuleType] = Validate.fromPredicate(e => ???, e => ???, ${TermName(whereRule)}())""")
           }
         case None => Nil
       }
@@ -255,35 +285,31 @@ q"""MinSize[W.`$min`.T]"""*/
               case None                           => loop(supertypes, tail)
             }
         }
-      val parents = entity.subtype.map(TermName(_))
+      val parents = entity.subtype.map(n => TermName(s"${n}Abstract"))
       val parentEntities = loop(Nil, entity.subtype)
-      val cname = TermName(entity.name)
-      if (entity.supertype.isDefined) {
-        val stats = entity.attributes.map(attributeToDefTransformer.transform(_))
-        q"""
-..$defaultImports
 
-trait $tname extends ..$parents {
-..$stats
-}
-object $cname {
-..$whereRules
-}
-"""
-      } else {
-
-        val paramss = List((parentEntities.flatMap(_.attributes) ++ entity.attributes).map(attributeToValTransformer.transform(_)))
-        q"""
-..$defaultImports
-
-final case class $tname(...$paramss) extends ..$parents {
- 
-}
-
-object $cname {
-  ..$whereRules
-}"""
+      def getAttributes = {
+        entity.attributes.map(attributeToDefTransformer.transform(_))
       }
+      def paramss = List((parentEntities.flatMap(_.attributes) ++ entity.attributes).map(attributeToValTransformer.transform(_)))
+      val (toExtends, abstractDefinition) = isAbstract match {
+        case true => (Seq(aname), q"""trait $aname extends ..$parents {
+..${getAttributes}
+}""")
+        case _ => (parents, q"""""")
+      }
+      val concreteDefinition = entity match {
+        case HasConcrete() =>
+          q"""final case class $tname(...$paramss) extends ..$parents {
+ 
+}"""
+        case _ => q""""""
+      }
+      val objectDefinition = q"""object ${TermName(entity.name)} {
+..$whereRules
+}"""
+      val entityDefinitions = defaultImports ++ Seq(abstractDefinition, concreteDefinition, objectDefinition).filter(_.nonEmpty)
+      q"""..$entityDefinitions"""
     }
   }
 
@@ -479,6 +505,7 @@ package object ${TermName(name)} {
       case e: ast.FunctionDeclaration => functionTransformer.addToDictionary(e)
       case e: ast.RuleDeclaration     =>
       case e: ast.TypeDeclaration     => typeTransformer.addToDictionary(e)
+      case _                          =>
     }
 
     def transform(a: ast.SchemaBody)(implicit context: TransformerContext): universe.Tree = a match {
