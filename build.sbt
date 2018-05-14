@@ -1,5 +1,7 @@
 import org.scalajs.sbtplugin.cross.{ CrossProject, CrossType }
 
+version in ThisBuild := "0.0.1-SNAPSHOT"
+
 organization in ThisBuild := "com.iz2use"
 
 val compilerOptions = Seq(

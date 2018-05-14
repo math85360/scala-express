@@ -20,22 +20,14 @@ object ParseAndGenerate extends TestSuite {
     implicit val ctx = TransformerContext()
     ctx.withPackage("com.iz2use.express.ifc") {
       for ((filename, pkg,  tree) <- Transformer(schema) if tree.nonEmpty) {
-        val code = showCode(tree)
+        val code = tree.map(showCode(_)).mkString("\n")
         val target = s"modules/ifc/shared/src/main/scala/${filename.replace('.', '/')}.scala"
         val parentFolder = new File(target.split('/').init.mkString("/"))
         parentFolder.mkdirs()
         val file = new File(target)
         val pw = new PrintWriter(file)
         pw.write(s"package $pkg\n")
-        pw.write(code
-            .stripPrefix("{")
-            .stripLineEnd
-            .stripSuffix("}")
-            .stripLineEnd
-            .stripSuffix("()")
-            .stripSuffix("  ")
-            .stripLineEnd
-            .stripSuffix(";"))
+        pw.write(code)
         pw.close
       }
     }

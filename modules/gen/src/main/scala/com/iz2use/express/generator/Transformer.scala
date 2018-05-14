@@ -8,10 +8,16 @@ trait Dictionary {
 }
 case class TransformerContext(private val rootPackage: String = "") {
   //private var names: Map[String, ast.SchemaBody] = Map.empty
+  private var inheritingTraits: Map[String, Seq[String]] = Map.empty
   private var packageStack: List[Seq[String]] = rootPackage match {
     case "" => List()
     case r  => List(r.split('.'))
   }
+  def addInheritTraitTo(entity: String, parent: String): Unit = {
+    val v = inheritingTraits.getOrElse(entity, Nil)
+    inheritingTraits = inheritingTraits + (entity -> (parent +: v))
+  }
+  def inheritingTraitsOf(entity: String) = inheritingTraits.getOrElse(entity, Nil)
   private var currentPackage: List[String] = packageStack.reverse.flatten
   def withPackage[A](name: String)(f: => A): A = {
     val oldCurrentPackage = currentPackage
@@ -98,6 +104,7 @@ object ScalaDefinition {
   import universe.{ Transformer => _, _ }
   val defaultImports = Seq(
     q"import com.iz2use.express.syntax._",
+    q"import com.iz2use.express.p21._",
     q"import eu.timepit.refined._",
     q"import eu.timepit.refined.api._",
     q"import eu.timepit.refined.boolean._",
@@ -150,8 +157,8 @@ q"""MinSize[W.`$min`.T]"""*/
     ctx.find(name) match {
       case Some(a: ast.EntityDeclaration) =>
         val target = a match {
-          case HasAbstract() => tpe("Abstract")
-          case _             => tpe()
+          //case HasAbstract() => tpe("Abstract")
+          case _ => tpe()
         }
         tq"""RefTo[$target]"""
       case _ =>
@@ -251,29 +258,35 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
-  implicit val entityTransformer = Transformer.typeInstance[ast.EntityDeclaration, universe.Tree](_.name) { implicit ctx =>
+  def transformWhereRule(tname: TypeName, whereClause: Option[ast.WhereClause]): (Seq[universe.Tree], Seq[TypeName]) = {
+    var defaultNumber: Int = 0
+    var trees: Seq[universe.Tree] = Nil
+    var wrs: Seq[TypeName] = Nil
+    for {
+      v <- whereClause
+      ast.DomainRule(nameOpt, expr) <- v.clauses
+    } {
+      val whereRule = nameOpt.getOrElse({
+        defaultNumber += 1
+        s"WhereRule$defaultNumber"
+      })
+      val whereRuleType = TypeName(whereRule)
+      val whereRuleName = TermName(whereRule.lowerFirst)
+      trees = trees ++ Seq(
+        q"""final case class $whereRuleType()""",
+        q"""val $whereRuleName : Validate[$tname, $whereRuleType] = Validate.alwaysPassed(${TermName(whereRule)}())""")
+      wrs = wrs :+ whereRuleType
+    }
+    (trees, wrs)
+  }
+
+  implicit val entityTransformer = Transformer.typeInstance[ast.EntityDeclaration, Seq[universe.Tree]](_.name) { implicit ctx =>
     { entity =>
       val tname = TypeName(entity.name)
-      val aname = TypeName(entity.name + "Abstract")
+      val aname = tname
       val isAbstract = HasAbstract.unapply(entity)
       val cname = if (isAbstract) aname else tname
-      val whereRules = entity.whereClause match {
-        case Some(ast.WhereClause(whereClauses)) =>
-          var defaultNumber: Int = 0
-          whereClauses flatMap {
-            case ast.DomainRule(nameOpt, expr) =>
-              val whereRule = nameOpt.getOrElse({
-                defaultNumber += 1
-                s"WhereRule$defaultNumber"
-              })
-              val whereRuleType = TypeName(whereRule)
-              val whereRuleName = TermName(whereRule.lowerFirst)
-              Seq(
-                q"""final case class $whereRuleType()""",
-                q"""val $whereRuleName : Validate[$cname, $whereRuleType] = Validate.fromPredicate(e => ???, e => ???, ${TermName(whereRule)}())""")
-          }
-        case None => Nil
-      }
+      val (whereRules, whereTypes) = transformWhereRule(cname, entity.whereClause)
       @tailrec
       def loop(supertypes: Seq[ast.EntityDeclaration], parents: Seq[String]): Seq[ast.EntityDeclaration] =
         parents match {
@@ -285,31 +298,24 @@ q"""MinSize[W.`$min`.T]"""*/
               case None                           => loop(supertypes, tail)
             }
         }
-      val parents = entity.subtype.map(n => TermName(s"${n}Abstract"))
+      val parents = entity.subtype.map(n => TermName(n)) ++ ctx.inheritingTraitsOf(entity.name).map(TermName(_))
       val parentEntities = loop(Nil, entity.subtype)
 
       def getAttributes = {
         entity.attributes.map(attributeToDefTransformer.transform(_))
       }
-      def paramss = List((parentEntities.flatMap(_.attributes) ++ entity.attributes).map(attributeToValTransformer.transform(_)))
-      val (toExtends, abstractDefinition) = isAbstract match {
-        case true => (Seq(aname), q"""trait $aname extends ..$parents {
+      val allAttributes = parentEntities.flatMap(_.attributes) ++ entity.attributes
+      def paramss = List(allAttributes.map(attributeToValTransformer.transform(_)))
+      val definition = q"""class $tname extends ..$parents {
 ..${getAttributes}
-}""")
-        case _ => (parents, q"""""")
-      }
-      val concreteDefinition = entity match {
-        case HasConcrete() =>
-          q"""final case class $tname(...$paramss) extends ..$parents {
- 
 }"""
-        case _ => q""""""
-      }
+      def applyParamss = List(allAttributes.map(attributeToValTransformer.transform(_)))
       val objectDefinition = q"""object ${TermName(entity.name)} {
+def apply(...$applyParamss) : $tname = new $tname {
+}
 ..$whereRules
 }"""
-      val entityDefinitions = defaultImports ++ Seq(abstractDefinition, concreteDefinition, objectDefinition).filter(_.nonEmpty)
-      q"""..$entityDefinitions"""
+      defaultImports ++ Seq(definition, objectDefinition).filter(_.nonEmpty)
     }
   }
 
@@ -388,7 +394,7 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
-  implicit val functionTransformer: Transformer[ast.FunctionDeclaration, universe.Tree] = Transformer.typeInstance[ast.FunctionDeclaration, universe.Tree](_.name) { implicit ctx =>
+  implicit val functionTransformer: Transformer[ast.FunctionDeclaration, Seq[universe.Tree]] = Transformer.typeInstance[ast.FunctionDeclaration, Seq[universe.Tree]](_.name) { implicit ctx =>
     { function =>
       ctx.pushContext
       val name = TermName(function.name)
@@ -410,20 +416,17 @@ q"""MinSize[W.`$min`.T]"""*/
       val head = function.head.map(Transformer(_)(algorithmHeadTransformer, ctx))
       val body = function.body.map(Transformer(_))
       ctx.popContext
-      q"""
-..$defaultImports
-
-object $name {
+      defaultImports :+
+        q"""object $name {
   def apply[..$genericTpts](..$paramss): $tpt = {
     ..$head
     ..$body
   }
-}
-"""
+}"""
     }
   }
 
-  implicit val schemaTransformer: Transformer[ast.Schema, Seq[(String, String, universe.Tree)]] = Transformer.instance { implicit ctx =>
+  implicit val schemaTransformer: Transformer[ast.Schema, Seq[(String, String, Seq[universe.Tree])]] = Transformer.instance { implicit ctx =>
     { schema =>
       ctx.withPackage(schema.id.toLowerCase) {
         schema.body.foreach(Transformer.addToDictionary(_))
@@ -435,21 +438,30 @@ object $name {
           case lst      => (lst.init, lst.last)
         }
 
-        val types = schema.body collect {
+        val types = schema.body flatMap {
           case e: ast.TypeDeclaration => Transformer(e)
+          case _                      => Nil
+        }
+
+        val register = schema.body collect {
+          case e: ast.EntityDeclaration => q"""registerEntity[${TypeName(e.name)}]"""
         }
 
         val rules = Seq[universe.Tree]()
-
-        val mainDeclaration = ((ctx.targetPackage :+ "package").mkString("."), packageParent.mkString("."), q"""
-
-..$defaultImports
-
-package object ${TermName(name)} {
+        
+        val otherImports = Seq(q"""import shapeless.{ Coproduct, :+:, CNil }""")
+        
+        val packageObjectDefinition = q"""package object ${TermName(name)} {
+  def registerEntity[A](implicit encoder: Encoder[A], decoder: Decoder[A]) : Unit = {
+  }
   ..$types
   ..$rules
+  ..$register
 }
-""")
+"""
+
+        val mainDeclaration = ((ctx.targetPackage :+ "package").mkString("."), packageParent.mkString("."), defaultImports ++ otherImports :+ packageObjectDefinition 
+          )
 
         val target = ctx.targetPackage.mkString(".")
         val independentDeclarations = schema.body.collect {
@@ -462,23 +474,82 @@ package object ${TermName(name)} {
     }
   }
 
-  implicit val typeTransformer = Transformer.typeInstance[ast.TypeDeclaration, universe.Tree](_.name) { implicit ctx =>
-    { tpe =>
+  /**
+   * Transformer[A, B] {
+   * def addToDictionary(a: A)(implicit context: TransformerContext): Unit = context.register(returnName(a), a)
+   * def transform(a: A)(implicit context: TransformerContext): B = {
+   * context.pushContext
+   * val r = f(context)(a)
+   * context.popContext
+   * r
+   * }
+   * }
+   */
+  implicit val typeTransformer = new Transformer[ast.TypeDeclaration, Seq[universe.Tree]] {
+    def addToDictionary(a: ast.TypeDeclaration)(implicit context: TransformerContext): Unit = {
+      a.underlyingType match {
+        case ast.SelectType(extensible, Some(Left(entities))) =>
+        //entities.foreach { e => context.addInheritTraitTo(e, a.name) }
+        case _ =>
+      }
+      context.register(a.name, a)
+    }
+    def transform(tpe: ast.TypeDeclaration)(implicit context: TransformerContext): Seq[universe.Tree] = {
       val name = TypeName(tpe.name)
       tpe.underlyingType match {
         case ast.SelectType(extensible, from) =>
-          q"""type $name"""
+          val tpt = from match {
+            case Some(Left(items)) => items.foldRight[universe.Tree](tq"CNil")((c, acc) => tq"${TypeName(c)} :+: $acc")
+            case _                 => throw new NotImplementedError("SELECT BASED ON not supported (${tpe.name})")
+          }
+          Seq(q"""type $name = $tpt""")
         case ast.EnumerationType(extensible, items) =>
-          items match {
-            case None =>
-            case Some(Left(items)) =>
-            case Some(Right(ast.BasedOnEnumeration(name, additionalItems))) =>
+          val enumDefs = items match {
+            case None => Nil
+            case Some(Left(items)) => items map { item =>
+              q"""case object ${TermName(item.name)} extends $name"""
+            }
+            case _ => throw new NotImplementedError("ENUMERATION BASED ON not supported (${tpe.name})")
           }
           val tpt = tq"""Enumeration"""
           q"""type $name = $tpt"""
+          val clsDefs: Seq[universe.Tree] = Nil
+          val enum = q"""object ${TermName(tpe.name)} {
+..$enumDefs
+}"""
+          extensible match {
+            case true => Seq(q"""abstract class $name extends scala.Product with scala.Serializable {
+..$clsDefs
+}""", enum)
+            case false => Seq(q"""sealed abstract class $name extends scala.Product with scala.Serializable {
+..$clsDefs 
+}""", enum)
+          }
+        /*case e: ast.SimpleType =>
+          val tpt = Transformer(e)
+          val parents = context.inheritingTraitsOf(tpe.name).map(TypeName(_))
+          Seq(q"""case class $name(val value: $tpt) extends ..$parents""")*/
         case e: ast.ConcreteType =>
           val tpt = Transformer(e)
-          q"""type $name = $tpt"""
+          val cname = TermName(tpe.name)
+          //val parents = context.inheritingTraitsOf(tpe.name).map(TypeName(_))
+          // class A(val t: Double)
+          // class B extends A
+          //Seq(q"""class $name(val value: $tpt) extends ..$parents""")
+          val (whereRules, whereTypes) = transformWhereRule(name, tpe.whereClause)
+          val target = whereTypes.map(t => tq"""$cname.$t""") match {
+            case Nil => tpt
+            case Seq(one) =>
+              tq"""$tpt Refined $one"""
+            case Seq(one, two, rest @ _*) =>
+              val refined = rest.foldLeft(tq"""$one And $two""")((acc, c) => tq"""$acc And $c""")
+              tq"""$tpt Refined $refined"""
+          }
+          Seq(
+            q"""type $name = $target""",
+            q"""object $cname {
+..$whereRules
+}""")
       }
     }
   }
@@ -490,16 +561,16 @@ package object ${TermName(name)} {
    * }
    */
   //def emptyTransformer[A](a: A)(pf: A => String) =
-  class EmptyTransformer(name: String) extends Transformer[Any, universe.Tree] {
+  class EmptyTransformer(name: String) extends Transformer[Any, Seq[universe.Tree]] {
     def addToDictionary(a: Any)(implicit context: TransformerContext): Unit = {
       context.register(name, a)
     }
-    def transform(a: Any)(implicit context: TransformerContext): universe.Tree = q""
+    def transform(a: Any)(implicit context: TransformerContext): Seq[universe.Tree] = Nil
   }
 
   def emptyTransformer(name: String = "") = new EmptyTransformer(name)
 
-  implicit val schemaBodyTransformer = new Transformer[ast.SchemaBody, universe.Tree] {
+  implicit val schemaBodyTransformer = new Transformer[ast.SchemaBody, Seq[universe.Tree]] {
     def addToDictionary(a: ast.SchemaBody)(implicit context: TransformerContext): Unit = a match {
       case e: ast.EntityDeclaration   => entityTransformer.addToDictionary(e)
       case e: ast.FunctionDeclaration => functionTransformer.addToDictionary(e)
@@ -508,10 +579,10 @@ package object ${TermName(name)} {
       case _                          =>
     }
 
-    def transform(a: ast.SchemaBody)(implicit context: TransformerContext): universe.Tree = a match {
+    def transform(a: ast.SchemaBody)(implicit context: TransformerContext): Seq[universe.Tree] = a match {
       case e: ast.EntityDeclaration   => Transformer(e)
       case e: ast.FunctionDeclaration => Transformer(e)(emptyTransformer(e.name), context)
-      case e: ast.RuleDeclaration     => q""" def test() : Unit = {} """
+      case e: ast.RuleDeclaration     => Nil
       case e: ast.TypeDeclaration     => Transformer(e)
     }
   }
