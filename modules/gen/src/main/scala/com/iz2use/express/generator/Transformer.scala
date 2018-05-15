@@ -336,8 +336,8 @@ q"""MinSize[W.`$min`.T]"""*/
         q"""type Repr = $hlist"""
       }
       def selfCodec: (universe.Tree, universe.Tree) = {
-        val encodeArgs = allAttributes.foldRight[universe.Tree](q"HNil") { case ((idx, 8, _, _), acc) => q"$name :: $acc" }
-        val unapplyArgs = allAttributes map { case (idx,name,_,_) => Literal(Constant(s"_$idx")) }
+        val encodeArgs = allAttributes.foldRight[universe.Tree](q"HNil") { case ((idx, _, _, _), acc) => q"""${TermName(s"_$idx")} :: $acc""" }
+        val unapplyArgs = allAttributes map { case (idx,name,_,_) => pq"""${TermName(s"_$idx")}""" }
         val decodeArgs = allAttributes map { case (idx, _, _, _) => q"""a(${idx-1})""" }
         (q"""Encoder.encodeObject { case $compName(..$unapplyArgs) => $encodeArgs }""",
           q"""Decoder.decodeObject(a => $compName(..$decodeArgs))""")
