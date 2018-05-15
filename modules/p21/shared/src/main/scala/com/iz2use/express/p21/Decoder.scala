@@ -9,6 +9,10 @@ import scala.Right
 trait Decoder[A] { self =>
   def apply(c: Step): Decoder.Result[A]
 
+  /*def orElse[B<:A, C>:B](other: Decoder[C]): Decoder[B] = apply(c) match {
+    case Left(e) => other(c)
+  }*/
+
   /*def tryDecodeAccumulating(c: Step): AccumulatingDecoder.Result[A] = f(c) match {
       case Right(v) => Validated.valid(v)
       case Left(e) => Validated.invalidNel(e)
@@ -23,16 +27,34 @@ final object Decoder extends TupleDecoders {
 
   type Result[A] = Either[DecodingFailure, A]
 
-  implicit final val decodeBoolean: Decoder[Boolean] = new Decoder[Boolean] {
-    final def apply(a: Step): Result[Boolean] = a match {
-      case StepBoolean(boolean) => Right(boolean)
-      case _                    => Left(DecodingFailure("Boolean", a))
+  def instance[A](f: Step => Result[A]): Decoder[A] = new Decoder[A] {
+    def apply(c: Step): Decoder.Result[A] = f(c)
+  }
+  def instancePf[A](name: String)(f: PartialFunction[Step, A]): Decoder[A] = instance { c =>
+    f.isDefinedAt(c) match {
+      case true  => Right(f(c))
+      case false => Left(DecodingFailure(name, c))
     }
   }
-  implicit final val decodeString: Decoder[String] = new Decoder[String] {
-    final def apply(a: Step): Result[String] = a match {
-      case StepString(string) => Right(string)
-      case _                  => Left(DecodingFailure("String", a))
+  def alwaysFailed[A](name: String): Decoder[A] = instance { c =>
+    Left(DecodingFailure(name, c))
+  }
+
+  implicit final val decodeBoolean: Decoder[Boolean] = instancePf("Boolean") {
+    case StepBoolean(boolean) => boolean
+  }
+  implicit final val decodeString: Decoder[String] = instancePf("String") {
+    case StepString(string) => string
+  }
+  implicit class RichDecoder[A](da: Decoder[A]) {
+    def |[B >: A, C <: B](db: => Decoder[C]): Decoder[B] = instance[B] { c =>
+      da(c) match {
+        case Right(r) => Right(r)
+        case Left(ta) => db(c) match {
+          case z @ Right(r) => z
+          case Left(tb)     => Left(DecodingFailure(s"${ta.message} | ${tb.message}", c))
+        }
+      }
     }
   }
 }

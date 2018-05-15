@@ -22,7 +22,7 @@ object GenerateIfcRoot extends TestSuite {
           ast.ExplicitAttribute(ast.SimpleAttributeName("Description"), true, ast.UserDefinedEntityOrType("IfcText"))), Nil, Nil, Nil, None)
       val result = Transformer(entity).map(showCode(_))
       val expected = (ScalaDefinition.defaultImports ++ Seq(
-        q"""trait IfcRootAbstract {
+        q"""trait IfcRoot {
   def globalId: IfcGloballyUniqueId
   def ownerHistory: Option[IfcOwnerHistory]
   def name: Option[IfcLabel]
@@ -30,7 +30,7 @@ object GenerateIfcRoot extends TestSuite {
 }""",
         q"""object IfcRoot"""))
         .map(showCode(_))
-      //assert(result == expected)
+      assert(result == expected)
     }
 
     'IfcRecurrencePattern{
@@ -49,19 +49,49 @@ object GenerateIfcRoot extends TestSuite {
 
       val result = Transformer(entity).map(showCode(_))
       val expected = (ScalaDefinition.defaultImports ++ Seq(
-        q"""final case class IfcRecurrencePattern(
-  val recurrenceType: IfcRecurrenceTypeEnum,
-  val dayComponent: Option[Set[IfcDayInMonthNumber] Refined NonEmpty] = None,
-  val weekdayComponent: Option[Set[IfcDayInWeekNumber] Refined NonEmpty] = None,
-  val monthComponent: Option[Set[IfcMonthInYearNumber] Refined NonEmpty] = None,
-  val position: Option[IfcInteger] = None,
-  val interval: Option[IfcInteger] = None,
-  val occurrences: Option[IfcInteger] = None,
-  val timePeriods: Option[List[IfcTimePeriod] Refined NonEmpty] = None
-)""",
-        q"""object IfcRecurrencePattern"""))
+        q"""class IfcRecurrencePattern {
+  def recurrenceType: IfcRecurrenceTypeEnum
+  def dayComponent: Option[Set[IfcDayInMonthNumber] Refined NonEmpty]
+  def weekdayComponent: Option[Set[IfcDayInWeekNumber] Refined NonEmpty]
+  def monthComponent: Option[Set[IfcMonthInYearNumber] Refined NonEmpty]
+  def position: Option[IfcInteger]
+  def interval: Option[IfcInteger]
+  def occurrences: Option[IfcInteger]
+  def timePeriods: Option[List[IfcTimePeriod] Refined NonEmpty]
+}""",
+        q"""object IfcRecurrencePattern {
+  def apply(
+    recurrenceType: IfcRecurrenceTypeEnum,
+    dayComponent: Option[Set[IfcDayInMonthNumber] Refined NonEmpty] = None,
+    weekdayComponent: Option[Set[IfcDayInWeekNumber] Refined NonEmpty] = None,
+    monthComponent: Option[Set[IfcMonthInYearNumber] Refined NonEmpty] = None,
+    position: Option[IfcInteger] = None,
+    interval: Option[IfcInteger] = None,
+    occurrences: Option[IfcInteger] = None,
+    timePeriods: Option[List[IfcTimePeriod] Refined NonEmpty] = None) : IfcRecurrencePattern = {
+    val _1 = recurrenceType
+    val _2 = dayComponent 
+    val _3 = weekdayComponent 
+    val _4 = monthComponent 
+    val _5 = position 
+    val _6 = interval 
+    val _7 = occurrences 
+    val _8 = timePeriods 
+    new IfcRecurrencePattern {
+      val recurrenceType: IfcRecurrenceTypeEnum = _1
+      val dayComponent: Option[Set[IfcDayInMonthNumber] Refined NonEmpty] = _2
+      val weekdayComponent: Option[Set[IfcDayInWeekNumber] Refined NonEmpty] = _3
+      val monthComponent: Option[Set[IfcMonthInYearNumber] Refined NonEmpty] = _4
+      val position: Option[IfcInteger] = _5
+      val interval: Option[IfcInteger] = _6
+      val occurrences: Option[IfcInteger] = _7
+      val timePeriods: Option[List[IfcTimePeriod] Refined NonEmpty] = _8
+    }
+  }
+}
+"""))
         .map(showCode(_))
-      //assert(result == expected)
+      assert(result == expected)
     }
   }
 }

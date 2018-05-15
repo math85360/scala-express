@@ -89,6 +89,12 @@ trait LowPriorityImplicitGenericEncoder {
       def apply(a: A): Step =
         f(a)
     }
+  
+  def flatMap[A](f: A => Encoder[A]): Encoder[A] =
+    new Encoder[A] {
+      def apply(a: A): Step =
+        f(a)(a)
+  }
 
   implicit def genericObjectEncoder[A, H <: HList](
     implicit
