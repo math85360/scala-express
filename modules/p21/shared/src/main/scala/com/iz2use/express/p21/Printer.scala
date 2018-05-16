@@ -34,6 +34,11 @@ final object Printer {
     private[p21] val writer: Appendable) extends Step.Folder[Unit] {
     final def onBoolean(value: Boolean): Unit = writer.append(if (value) ".T." else ".F.")
     final def onNull: Unit = writer.append("$")
+    final def onLiteral(value: String) : Unit = {
+      writer.append('.')
+      writer.append(value)
+      writer.append('.')
+    }
     final def onReference(value: Long): Unit = {
       writer.append('#')
       writer.append(value.toString)

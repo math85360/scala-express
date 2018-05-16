@@ -100,6 +100,7 @@ object ScalaDefinition {
   val universe: scala.reflect.runtime.universe.type = scala.reflect.runtime.universe
   import universe.{ Transformer => _, _ }
   val defaultImports = Seq(
+    q"import cats.syntax.functor._",
     q"import com.iz2use.express.syntax._",
     q"import com.iz2use.express.p21._",
     q"import eu.timepit.refined._",
@@ -107,7 +108,8 @@ object ScalaDefinition {
     q"import eu.timepit.refined.boolean._",
     q"import eu.timepit.refined.collection._",
     q"import eu.timepit.refined.numeric._",
-    q"import eu.timepit.refined.string._")
+    q"import eu.timepit.refined.string._",
+    q"import shapeless.{ HList, ::, HNil }")
 
   implicit class RichString(s: String) {
     def lowerFirst = s.head.toLower +: s.tail
@@ -148,7 +150,6 @@ q"""MinSize[W.`$min`.T]"""*/
     ctx.find(name) match {
       case Some(a: ast.EntityDeclaration) =>
         val target = a match {
-          //case HasAbstract() => tpe("Abstract")
           case _ => tpe()
         }
         tq"""RefTo[$target]"""
@@ -219,16 +220,6 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
-  object HasAbstract {
-    def unapply(entity: ast.EntityDeclaration): Boolean = entity.supertype match {
-      case Some(ast.AbstractEntityDeclaration) => true
-      case Some(ast.AbstractSupertypeDeclaration(Some(ast.SupertypeOneOf(_)))) => true
-      case Some(ast.SupertypeRule(ast.SupertypeOneOf(_))) => true
-      case Some(other) => throw new NotImplementedError(s"$other not supported for entity")
-      case _ => false
-    }
-  }
-
   object HasConcrete {
     def unapply(entity: ast.EntityDeclaration): Boolean = entity.supertype match {
       case Some(ast.AbstractEntityDeclaration) => false
@@ -280,11 +271,15 @@ q"""MinSize[W.`$min`.T]"""*/
   implicit val entityTransformer = Transformer.typeInstance[ast.EntityDeclaration, Seq[universe.Tree]](_.name) { implicit ctx =>
     { entity =>
       val tname = TypeName(entity.name)
-      val aname = tname
-      val isAbstract = HasAbstract.unapply(entity)
-      val cname = if (isAbstract) aname else tname
+      val isAbstract = entity.supertype match {
+        case Some(ast.AbstractEntityDeclaration) => true
+        case Some(ast.AbstractSupertypeDeclaration(Some(ast.SupertypeOneOf(_)))) => true
+        case Some(ast.SupertypeRule(ast.SupertypeOneOf(_))) => false
+        case Some(other) => throw new NotImplementedError(s"$other not supported for entity")
+        case _ => false
+      }
       val compName = TermName(entity.name)
-      val (whereRules, whereTypes) = transformWhereRule(cname, entity.whereClause)
+      val (whereRules, whereTypes) = transformWhereRule(tname, entity.whereClause)
       @tailrec
       def loop(supertypes: Seq[ast.EntityDeclaration], parents: Seq[String]): Seq[ast.EntityDeclaration] =
         parents match {
@@ -336,25 +331,33 @@ q"""MinSize[W.`$min`.T]"""*/
         q"""type Repr = $hlist"""
       }
       def selfCodec: (universe.Tree, universe.Tree) = {
-        val encodeArgs = allAttributes.foldRight[universe.Tree](q"HNil") { case ((idx, _, _, _), acc) => q"""${TermName(s"_$idx")} :: $acc""" }
-        val unapplyArgs = allAttributes map { case (idx,name,_,_) => pq"""${TermName(s"_$idx")}""" }
-        val decodeArgs = allAttributes map { case (idx, _, _, _) => q"""a(${idx-1})""" }
-        (q"""Encoder.encodeObject { case $compName(..$unapplyArgs) => $encodeArgs }""",
-          q"""Decoder.decodeObject(a => $compName(..$decodeArgs))""")
+        val encodeArgs = allAttributes.foldRight[universe.Tree](q"HNil") { case ((_, name, _, _), acc) => q"""c.$name :: $acc""" }
+        //val unapplyArgs = allAttributes map { case (idx,name,_,_) => pq"""${TermName(s"_$idx")}""" }
+        // 1. HList => Decode HList
+        // 2. HList.
+        val decodeArgs = allAttributes map { case (idx, _, _, _) => q"r.at(${idx - 1})" }
+        //val unapplyDecode = decodeArgs.foldRight[universe.Tree](q"HNil") { case (c, acc) => pq"""$c :: $acc""" }
+        val name = q"""${entity.name}"""
+        (q"""ObjectEncoder.toHList($name){ (c:$tname) => $encodeArgs }""",
+          q"""Decoder[Repr].map { r => $compName(..$decodeArgs) }""")
       }
-      def subtypeCodec(subtypes: Seq[String], otherCodec: Option[(universe.Tree, universe.Tree)] = None): (universe.Tree, universe.Tree) = {
+      def subtypeCodec(subtypes: Seq[String], supertypeCodec: Option[(universe.Tree, universe.Tree)] = None): (universe.Tree, universe.Tree) = {
         val (encoderCases, decoders) =
           (subtypes.map({ subtype =>
-            (cq"""c: ${TypeName(subtype)} => ${TermName(subtype)}.encoder(c)""",
+            (cq"""c: ${TypeName(subtype)} => ${TermName(subtype)}.encoder.asInstanceOf[Encoder[$tname]]""",
               q"""${TermName(subtype)}.decoder""")
-          }) ++ otherCodec.map({
+          }) ++ supertypeCodec.map({
             case (enc, dec) =>
               (cq"""_ => $enc""",
                 dec)
           })).unzip
-        (q"""Encoder.instance { case ..$encoderCases}""",
-          decoders.foldRight[universe.Tree](q"""Decoder.alwaysFailed(${entity.name})""")((c, acc) =>
-            q"""$c | $acc"""))
+        (q"""Encoder.flatMap { case ..$encoderCases}""",
+          decoders match {
+            case Seq(one) => q""" $one.asInstanceOf[Decoder[$tname]] """
+            case lst      => lst.reduceRight[universe.Tree]((c, acc) => q"""$c | $acc""")
+          })
+        /*decoders.foldRight[universe.Tree](q"""Decoder.alwaysFailed(${entity.name})""")((c, acc) =>
+            q"""$c | $acc"""*/
       }
       def codec = {
         val (encoder, decoder) = entity.supertype match {
@@ -363,7 +366,11 @@ q"""MinSize[W.`$min`.T]"""*/
           case Some(ast.SupertypeRule(ast.SupertypeOneOf(UserDefinedEntities(subtypes @ _*)))) => subtypeCodec(subtypes, Some(selfCodec))
           case None => selfCodec
         }
-        Seq(
+        allAttributes.flatMap({
+          case (_, _, tpt, _) => Seq(
+            q"""Encoder[$tpt]""",
+            q"""Decoder[$tpt]""")
+        }) ++ Seq(
           q"""implicit val encoder : Encoder[$tname] = $encoder""",
           q"""implicit val decoder : Decoder[$tname] = $decoder""")
       }
@@ -476,8 +483,9 @@ q"""MinSize[W.`$min`.T]"""*/
           ctx.register(name.lowerFirst, targetTpe)
           q"""val $argName : $targetTpe"""
       })
-      val head = function.head.map(Transformer(_)(algorithmHeadTransformer, ctx))
-      val body = function.body.map(Transformer(_))
+      val head: Seq[universe.Tree] = Nil //function.head.map(Transformer(_)(algorithmHeadTransformer, ctx))
+      //val body = function.body.map(Transformer(_))
+      val body = Seq(q"""null.asInstanceOf[$tpt]""")
       ctx.popContext
       defaultImports :+
         q"""object $name {
@@ -558,26 +566,42 @@ q"""MinSize[W.`$min`.T]"""*/
     }
     def impl(tpe: ast.TypeDeclaration)(implicit context: TransformerContext): Seq[universe.Tree] = {
       val name = TypeName(tpe.name)
+      val cname = TermName(tpe.name)
       tpe.underlyingType match {
         case ast.SelectType(extensible, from) =>
           val tpt = from match {
             case Some(Left(items)) => items.foldRight[universe.Tree](tq"CNil")((c, acc) => tq"${TypeName(c)} :+: $acc")
-            case _                 => throw new NotImplementedError("SELECT BASED ON not supported (${tpe.name})")
+            case _                 => throw new NotImplementedError(s"SELECT BASED ON not supported (${tpe.name})")
           }
-          Seq(q"""type $name = $tpt""")
+          Seq(
+            q"""type $name = $tpt""" /*,
+            q"""object $cname {
+  implicit val encoder: Encoder[$name] = Encoder[$name]
+  implicit val decoder: Decoder[$name] = Decoder[$name]
+}"""*/ )
         case ast.EnumerationType(extensible, items) =>
-          val enumDefs = items match {
-            case None => Nil
-            case Some(Left(items)) => items map { item =>
-              q"""case object ${TermName(item.name)} extends $name"""
-            }
-            case _ => throw new NotImplementedError("ENUMERATION BASED ON not supported (${tpe.name})")
+          val (enumDefs, decodeCases, encodeCases) = items match {
+            case None => (Nil, Nil, Nil)
+            case Some(Left(items)) =>
+              items.map({ item =>
+                val entry = TermName(item.name)
+                (q"""case object $entry extends $name""",
+                  cq""" ${q"${item.name}"} => $cname.$entry """,
+                  cq""" $cname.$entry => ${q"${item.name}"} """)
+              }).unzip3
+            case _ => throw new NotImplementedError(s"ENUMERATION BASED ON not supported (${tpe.name})")
           }
           val tpt = tq"""Enumeration"""
           q"""type $name = $tpt"""
           val clsDefs: Seq[universe.Tree] = Nil
-          val enum = q"""object ${TermName(tpe.name)} {
+          val enum = q"""object $cname {
 ..$enumDefs
+  implicit val encoder: Encoder[$name] = Encoder.encodeLiteral.contramap {
+  case ..$encodeCases
+  }
+  implicit val decoder: Decoder[$name] = Decoder.decodeLiteral.collect {
+  case ..$decodeCases
+  }
 }"""
           extensible match {
             case true => Seq(q"""abstract class $name extends scala.Product with scala.Serializable {
