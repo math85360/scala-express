@@ -9,7 +9,9 @@ import com.iz2use.express.p21._
 import com.iz2use.express.p21.syntax._
 
 object WallTest extends TestSuite {
+  
   val tests = TestSuite {
+    implicit val strictness = Strictness.encodeStrictOrConvert
     implicit val db = DatabaseIfc()
     var i = 1
     val building = IfcBuilding(IfcGloballyUniqueId.next, name = "IfcBuilding")
@@ -30,12 +32,16 @@ object WallTest extends TestSuite {
         case StepObject(_, Vector(
       }*/
     }
-    val project = IfcProject(IfcGloballyUniqueId.next, name = "IfcProject",
+    implicit val uid = new Recoverable[IfcProject, String, NonEmptyWithFixedSize22, Refined] {
+      def recover(in: String): Strictness.Result[Refined[String, NonEmptyWithFixedSize22]] = {
+        if (in.length > 22) Right(in.take(22))
+        else Left("too long !")
+      }
+    }
+    val project = IfcProject(IfcGloballyUniqueId.next + "test", name = "IfcProject",
       unitsInContext = IfcUnitAssignment(
         Set[RefTo[IfcUnit]](
-          lengthUnit
-        )
-      ))
+          lengthUnit)))
     'TestIfcProjectEncoder{
       Encoder[IfcGloballyUniqueId]
       Encoder[Option[RefTo[IfcOwnerHistory]]]
@@ -99,8 +105,7 @@ object WallTest extends TestSuite {
     val wallType = IfcWallType(IfcGloballyUniqueId.next, name = name, predefinedType = IfcWallTypeEnum.NotDefined)
     val wallStandardCase = IfcWallStandardCase(
       IfcGloballyUniqueId.next,
-      objectPlacement = IfcLocalPlacement(relativePlacement = IfcAxis2Placement3D(IfcCartesianPoint(List(0.0, 0.0, 0.0))))
-    )
+      objectPlacement = IfcLocalPlacement(relativePlacement = IfcAxis2Placement3D(IfcCartesianPoint(List(0.0, 0.0, 0.0)))))
 
     'valid{
       assert(db.counter == 16)

@@ -10,18 +10,33 @@ import scala.collection.immutable.Set
 import com.iz2use.express.syntax._
 
 trait Encoder[A] { self =>
-  def apply(a: A): Step
+  def apply(a: A)(implicit strictness: EncoderStrictness): Step
 
   final def contramap[B](f: B => A): Encoder[B] = new Encoder[B] {
-    final def apply(a: B) = self(f(a))
+    final def apply(a: B)(implicit strictness: EncoderStrictness) = self(f(a))
   }
 
   final def mapStep(f: Step => Step): Encoder[A] = new Encoder[A] {
-    final def apply(a: A) = f(self(a))
+    final def apply(a: A)(implicit strictness: EncoderStrictness) = f(self(a))
   }
 }
 
-final object Encoder extends LowPriorityImplicitGenericEncoder {
+final object Encoder extends MidPriorityImplicitGenericEncoder {
+  def apply[A](implicit encoder: Encoder[A]): Encoder[A] =
+    encoder
+
+  def instance[A](f: A => Step): Encoder[A] =
+    new Encoder[A] {
+      def apply(a: A)(implicit strictness: EncoderStrictness): Step =
+        f(a)
+    }
+
+  def flatMap[A](f: A => Encoder[A]): Encoder[A] =
+    new Encoder[A] {
+      def apply(a: A)(implicit strictness: EncoderStrictness): Step =
+        f(a)(a)
+    }
+
   implicit final val encodeBoolean: Encoder[Boolean] = instance(Step.fromBoolean)
 
   implicit final val encodeString: Encoder[String] = instance(Step.fromString)
@@ -42,35 +57,29 @@ final object Encoder extends LowPriorityImplicitGenericEncoder {
     Step.fromReference(v.id)
   }
 
-  implicit final def encodeOption[A](implicit encodeA: Encoder[A]) = instance[Option[A]] {
-    case Some(v) => encodeA(v)
-    case None    => StepNull
+  implicit final def encodeOption[A](implicit encodeA: Encoder[A]) = new Encoder[Option[A]] {
+    def apply(a: Option[A])(implicit strictness: EncoderStrictness): Step = a match {
+      case Some(v) => encodeA(v)
+      case None    => StepNull
+    }
   }
 
-  implicit final def encodeSome[A](implicit encodeA: Encoder[A]) = instance[Some[A]] {
-    case Some(v) => encodeA(v)
+  implicit final def encodeSome[A](implicit encodeA: Encoder[A]) = new Encoder[Some[A]] {
+    def apply(a: Some[A])(implicit strictness: EncoderStrictness): Step = a match {
+      case Some(v) => encodeA(v)
+    }
   }
 
   implicit final val encodeNone = instance[None.type] { case None => StepNull }
-
-  /*implicit final def encodeRefined[A, R](implicit encodeA: Encoder[A], validate: Validate[A, R]): Encoder[A Refined R] = {
-    encodeA.contramap {
-      case Refined(v) =>
-        if (validate.isValid(v))
-          v
-        else
-          throw new RuntimeException(s"Not validated : {$v} with ${validate.showExpr(v)}")
-    }
-  }*/
-  implicit final def encodeRefined[T, P, F[_, _]](implicit
-    underlying: Encoder[T],
-                                                  refType: RefType[F]): Encoder[F[T, P]] =
-    underlying.contramap(refType.unwrap)
 
   /*implicit final def encodeTraversable[A, C[_]](implicit encodeA: Encoder[A]): Encoder[Traversable[A]] =
       instance[B[A]] { traversable =>
         traversable.
   }*/
+  implicit final def encodeArray[A](implicit encodeA: Encoder[A]): ArrayEncoder[Array[A]] =
+    new IterableArrayEncoder[A, Array](encodeA) {
+      final protected def toIterator(a: Array[A]): Iterator[A] = a.toIterator
+    }
   implicit final def encodeList[A](implicit encodeA: Encoder[A]): ArrayEncoder[List[A]] =
     new IterableArrayEncoder[A, List](encodeA) {
       final protected def toIterator(a: List[A]): Iterator[A] = a.toIterator
@@ -90,7 +99,7 @@ final object Encoder extends LowPriorityImplicitGenericEncoder {
   protected[this] abstract class IterableArrayEncoder[A, C[_]](encodeA: Encoder[A]) extends ArrayEncoder[C[A]] {
     protected def toIterator(a: C[A]): Iterator[A]
 
-    final def encodeArray(a: C[A]): Vector[Step] = {
+    final def encodeArray(a: C[A])(implicit strictness: EncoderStrictness): Vector[Step] = {
       val builder = Vector.newBuilder[Step]
       val iterator = toIterator(a)
       while (iterator.hasNext) {
@@ -101,29 +110,30 @@ final object Encoder extends LowPriorityImplicitGenericEncoder {
     }
   }
 }
-
-trait LowPriorityImplicitGenericEncoder {
-  def apply[A](implicit encoder: Encoder[A]): Encoder[A] =
-    encoder
-
-  def instance[A](f: A => Step): Encoder[A] =
-    new Encoder[A] {
-      def apply(a: A): Step =
-        f(a)
+trait MidPriorityImplicitGenericEncoder extends LowPriorityImplicitGenericEncoder {
+  implicit final def encodeRefined[E, T, P, F[_, _]](implicit
+    underlying: Encoder[T],
+                                                     v:           Validate[T, P],
+                                                     refType:     RefType[F],
+                                                     recoverable: Recoverable[E, T, P, F]): Encoder[F[T, P]] =
+    new Encoder[F[T, P]] {
+      def apply(a: F[T, P])(implicit strictness: EncoderStrictness): Step =
+        strictness(refType.unwrap(a))(v, refType, recoverable) match {
+          case Right(v)  => underlying(refType.unwrap(v))
+          case Left(err) => throw new Error(s"Strictness on refined is too high for $err, or need recoverable")
+        }
     }
-
-  def flatMap[A](f: A => Encoder[A]): Encoder[A] =
-    new Encoder[A] {
-      def apply(a: A): Step =
-        f(a)(a)
-    }
+}
+trait LowPriorityImplicitGenericEncoder extends LowestPriorityImplicitGenericEncoder {
 
   implicit def genericObjectEncoder[A, H <: HList](
     implicit
     generic:  Generic.Aux[A, H],
     hEncoder: Lazy[ObjectEncoder[H]]): Encoder[A] =
-    instance[A] { value =>
-      hEncoder.value.encodeObject(generic.to(value))
+    new Encoder[A] {
+      def apply(value: A)(implicit strictness: EncoderStrictness): StepObject = {
+        hEncoder.value.encodeObject(generic.to(value))
+      }
     }
 
   implicit final val encodeCNil: ObjectEncoder[CNil] =
@@ -132,7 +142,7 @@ trait LowPriorityImplicitGenericEncoder {
   implicit final def encodeCCons[L, R <: Coproduct](implicit
     encodeL: Encoder[L],
                                                     encodeR: Encoder[R]): Encoder[L :+: R] = new Encoder[L :+: R] {
-    def apply(a: L :+: R): Step = a match {
+    def apply(a: L :+: R)(implicit strictness: EncoderStrictness): Step = a match {
       case Inl(l) => encodeL(l)
       case Inr(r) => encodeR(r)
     }
@@ -145,9 +155,12 @@ trait LowPriorityImplicitGenericEncoder {
     case Inr(t) => tEncoder.encodeObject(t)
   }*/
 
+}
+
+trait LowestPriorityImplicitGenericEncoder {
   implicit def encodeAdtNoDiscr[A, Repr <: Coproduct](implicit
     gen: Generic.Aux[A, Repr],
                                                       encodeRepr: Encoder[Repr]): Encoder[A] =
     encodeRepr.contramap(gen.to)
 
-} 
+}

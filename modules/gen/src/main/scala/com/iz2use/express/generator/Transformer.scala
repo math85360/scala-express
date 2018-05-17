@@ -107,6 +107,7 @@ object ScalaDefinition {
     q"import eu.timepit.refined.api._",
     q"import eu.timepit.refined.boolean._",
     q"import eu.timepit.refined.collection._",
+    q"import eu.timepit.refined.generic._",
     q"import eu.timepit.refined.numeric._",
     q"import eu.timepit.refined.string._",
     q"import shapeless.{ HList, ::, HNil }")
@@ -126,7 +127,7 @@ object ScalaDefinition {
         tq"""NonEmpty"""
       case ast.Bounds(ast.IntegerLiteral(min), ast.IntegerLiteral(max)) =>
         if (min == max)
-          tq"""Size[W.${TermName(s"`$min`")}.T]"""
+          tq"""Size[Equal[W.${TermName(s"`$min`")}.T]]"""
         else
           tq"""And[MinSize[W.${TermName(s"`$min`")}.T], MaxSize[W.${TermName(s"`$max`")}.T]]"""
       //case ast.Bounds(ast.IntegerLiteral(min), ast.BuiltInConstant.Unknown) =>
@@ -195,7 +196,7 @@ q"""MinSize[W.`$min`.T]"""*/
           case Some(ast.Width(ast.IntegerLiteral(length), fixed)) =>
             val size = tq"""W.${TermName(s"`$length`")}.T"""
             fixed match {
-              case true  => tq"""String Refined Size[$size]"""
+              case true  => tq"""String Refined Size[Equal[$size]]"""
               case false => tq"""String Refined MaxSize[$size]"""
             }
           case None => tq"""String"""
@@ -230,7 +231,7 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
-  def transformWhereRule(tname: TypeName, whereClause: Option[ast.WhereClause]): (Seq[universe.Tree], Seq[TypeName]) = {
+  def transformWhereRule(tname: universe.Tree, whereClause: Option[ast.WhereClause]): (Seq[universe.Tree], Seq[TypeName]) = {
     var defaultNumber: Int = 0
     var trees: Seq[universe.Tree] = Nil
     var wrs: Seq[TypeName] = Nil
@@ -246,7 +247,7 @@ q"""MinSize[W.`$min`.T]"""*/
       val whereRuleName = TermName(whereRule.lowerFirst)
       trees = trees ++ Seq(
         q"""final case class $whereRuleType()""",
-        q"""val $whereRuleName : Validate[$tname, $whereRuleType] = Validate.alwaysPassed(${TermName(whereRule)}())""")
+        q"""implicit val $whereRuleName : Validate[$tname, $whereRuleType] = Validate.alwaysPassed(${TermName(whereRule)}())""")
       wrs = wrs :+ whereRuleType
     }
     (trees, wrs)
@@ -254,7 +255,7 @@ q"""MinSize[W.`$min`.T]"""*/
 
   type DetailedAttribute = (Int, TermName, universe.Tree, Option[universe.Tree])
 
-  def detailedAttributes(attributes: Seq[ast.ExplicitAttribute])(implicit context: TransformerContext): Seq[DetailedAttribute] = {
+  def detailedAttributes(attributes: Seq[ast.ExplicitAttribute])(implicit context: TransformerContext): Option[Seq[DetailedAttribute]] = {
     @tailrec
     def loop(index: Int, acc: Seq[DetailedAttribute], rest: Seq[ast.ExplicitAttribute]): Seq[DetailedAttribute] = rest match {
       case Seq() => acc
@@ -265,7 +266,10 @@ q"""MinSize[W.`$min`.T]"""*/
           acc :+ value,
           tail)
     }
-    loop(1, Nil, attributes)
+    attributes match {
+      case Seq() => None
+      case _     => Some(loop(1, Nil, attributes))
+    }
   }
 
   implicit val entityTransformer = Transformer.typeInstance[ast.EntityDeclaration, Seq[universe.Tree]](_.name) { implicit ctx =>
@@ -279,7 +283,7 @@ q"""MinSize[W.`$min`.T]"""*/
         case _ => false
       }
       val compName = TermName(entity.name)
-      val (whereRules, whereTypes) = transformWhereRule(tname, entity.whereClause)
+      val (whereRules, whereTypes) = transformWhereRule(tq"""$tname""", entity.whereClause)
       @tailrec
       def loop(supertypes: Seq[ast.EntityDeclaration], parents: Seq[String]): Seq[ast.EntityDeclaration] =
         parents match {
@@ -293,18 +297,23 @@ q"""MinSize[W.`$min`.T]"""*/
         }
       val parents = entity.subtype.map(n => TermName(n)) ++ ctx.inheritingTraitsOf(entity.name).map(TermName(_))
       val parentEntities = loop(Nil, entity.subtype)
-      def getAttributes = entity.attributes.map {
-        case Attribute(defName, optionalType, _) => q"""def $defName : $optionalType"""
+      val allAttributesOpt = detailedAttributes(parentEntities.flatMap(_.attributes) ++ entity.attributes)
+      val allAttributesList = allAttributesOpt.toList 
+      val allAttributesFlatten = allAttributesList.flatten
+      val definition = {
+        val attributeDefinitions = entity.attributes.map {
+          case Attribute(defName, optionalType, _) => q"""def $defName : $optionalType"""
+        }
+        if (isAbstract || allAttributesOpt.isEmpty)
+          q"""trait $tname extends ..$parents {..$attributeDefinitions}"""
+        else
+          /*if (attributeDefinitions.isEmpty)
+              q"""class $tname extends ..$parents {..$attributeDefinitions}"""
+            else*/
+          q"""abstract class $tname extends ..$parents {..$attributeDefinitions}"""
       }
-      val allAttributes = detailedAttributes(parentEntities.flatMap(_.attributes) ++ entity.attributes)
-      val definition = isAbstract match {
-        case true =>
-          q"""trait $tname extends ..$parents {..$getAttributes}"""
-        case false =>
-          q"""abstract class $tname extends ..$parents {..${getAttributes}}"""
-      }
-      def applyDefinition: Seq[universe.Tree] = {
-        val (applyParams, temps, inits) = allAttributes.map({
+      def applyDefinition: Seq[universe.Tree] = allAttributesList.flatMap { lst =>
+        val (applyParams, temps, inits) = lst.map({
           case (index, name, tpe, defaultOpt) =>
             val temp = TermName(s"_$index")
             val arg = defaultOpt match {
@@ -326,16 +335,16 @@ q"""MinSize[W.`$min`.T]"""*/
        *   Encoder[argTpe](arg))) || HList with HNil + ::
        *   Decoder: HList > Decoder
        */
-      val repr = {
-        val hlist = allAttributes.foldRight[universe.Tree](tq"HNil") { case ((_, _, c, _), acc) => tq"$c :: $acc" }
-        q"""type Repr = $hlist"""
+      val repr = allAttributesList flatMap { lst =>
+        val hlist = lst.foldRight[universe.Tree](tq"HNil") { case ((_, _, c, _), acc) => tq"$c :: $acc" }
+        Seq(q"""type Repr = $hlist""")
       }
-      def selfCodec: (universe.Tree, universe.Tree) = {
-        val encodeArgs = allAttributes.foldRight[universe.Tree](q"HNil") { case ((_, name, _, _), acc) => q"""c.$name :: $acc""" }
+      def selfCodec: Option[(universe.Tree, universe.Tree)] = allAttributesOpt map { attrs =>
+        val encodeArgs = attrs.foldRight[universe.Tree](q"HNil") { case ((_, name, _, _), acc) => q"""c.$name :: $acc""" }
         //val unapplyArgs = allAttributes map { case (idx,name,_,_) => pq"""${TermName(s"_$idx")}""" }
         // 1. HList => Decode HList
         // 2. HList.
-        val decodeArgs = allAttributes map { case (idx, _, _, _) => q"r.at(${idx - 1})" }
+        val decodeArgs = attrs map { case (idx, _, _, _) => q"r.at(${idx - 1})" }
         //val unapplyDecode = decodeArgs.foldRight[universe.Tree](q"HNil") { case (c, acc) => pq"""$c :: $acc""" }
         val name = q"""${entity.name}"""
         (q"""ObjectEncoder.toHList($name){ (c:$tname) => $encodeArgs }""",
@@ -360,24 +369,26 @@ q"""MinSize[W.`$min`.T]"""*/
             q"""$c | $acc"""*/
       }
       def codec = {
-        val (encoder, decoder) = entity.supertype match {
-          case Some(ast.AbstractEntityDeclaration) => (q"""???""", q"""???""")
-          case Some(ast.AbstractSupertypeDeclaration(Some(ast.SupertypeOneOf(UserDefinedEntities(subtypes @ _*))))) => subtypeCodec(subtypes)
-          case Some(ast.SupertypeRule(ast.SupertypeOneOf(UserDefinedEntities(subtypes @ _*)))) => subtypeCodec(subtypes, Some(selfCodec))
+        val codecOpt = entity.supertype match {
+          case Some(ast.AbstractEntityDeclaration) => Some((q"""???""", q"""???"""))
+          case Some(ast.AbstractSupertypeDeclaration(Some(ast.SupertypeOneOf(UserDefinedEntities(subtypes @ _*))))) => Some(subtypeCodec(subtypes))
+          case Some(ast.SupertypeRule(ast.SupertypeOneOf(UserDefinedEntities(subtypes @ _*)))) => Some(subtypeCodec(subtypes, selfCodec))
           case None => selfCodec
         }
-        allAttributes.flatMap({
+        allAttributesFlatten.flatMap({
           case (_, _, tpt, _) => Seq(
             q"""Encoder[$tpt]""",
             q"""Decoder[$tpt]""")
-        }) ++ Seq(
-          q"""implicit val encoder : Encoder[$tname] = $encoder""",
-          q"""implicit val decoder : Decoder[$tname] = $decoder""")
+        }) ++ codecOpt.toList.flatMap({
+          case (encoder, decoder) => Seq(
+            q"""implicit val encoder : Encoder[$tname] = $encoder""",
+            q"""implicit val decoder : Decoder[$tname] = $decoder""")
+        })
       }
       val objectBody: Seq[universe.Tree] = whereRules ++ codec ++ (isAbstract match {
         case true  => Nil
         case false => applyDefinition
-      }) :+ repr
+      }) ++ repr
       val objectDefinition = q"""object $compName { ..$objectBody }"""
       defaultImports ++ Seq(definition, objectDefinition).filter(_.nonEmpty)
     }
@@ -531,7 +542,7 @@ q"""MinSize[W.`$min`.T]"""*/
 }
 """
 
-        val mainDeclaration = ((ctx.targetPackage :+ "package").mkString("."), packageParent.mkString("."), defaultImports ++ otherImports :+ packageObjectDefinition)
+        val mainDeclaration = ((ctx.targetPackage :+ "Apackage").mkString("."), packageParent.mkString("."), defaultImports ++ otherImports :+ packageObjectDefinition)
 
         val target = ctx.targetPackage.mkString(".")
         val independentDeclarations = schema.body.collect {
@@ -559,7 +570,7 @@ q"""MinSize[W.`$min`.T]"""*/
     def addToDictionary(a: ast.TypeDeclaration)(implicit context: TransformerContext): Unit = {
       a.underlyingType match {
         case ast.SelectType(extensible, Some(Left(entities))) =>
-        //entities.foreach { e => context.addInheritTraitTo(e, a.name) }
+          entities.foreach { e => context.addInheritTraitTo(e, a.name) }
         case _ =>
       }
       context.register(a.name, a)
@@ -574,11 +585,11 @@ q"""MinSize[W.`$min`.T]"""*/
             case _                 => throw new NotImplementedError(s"SELECT BASED ON not supported (${tpe.name})")
           }
           Seq(
-            q"""type $name = $tpt""" /*,
+            q"""trait $name""",
             q"""object $cname {
-  implicit val encoder: Encoder[$name] = Encoder[$name]
-  implicit val decoder: Decoder[$name] = Decoder[$name]
-}"""*/ )
+  implicit val encoder: Encoder[$name] = null.asInstanceOf[Encoder[$name]]
+  implicit val decoder: Decoder[$name] = null.asInstanceOf[Decoder[$name]]
+}""")
         case ast.EnumerationType(extensible, items) =>
           val (enumDefs, decodeCases, encodeCases) = items match {
             case None => (Nil, Nil, Nil)
@@ -618,11 +629,11 @@ q"""MinSize[W.`$min`.T]"""*/
         case e: ast.ConcreteType =>
           val tpt = Transformer(e)
           val cname = TermName(tpe.name)
-          //val parents = context.inheritingTraitsOf(tpe.name).map(TypeName(_))
+          val parents = context.inheritingTraitsOf(tpe.name).map(TypeName(_))
           // class A(val t: Double)
           // class B extends A
           //Seq(q"""class $name(val value: $tpt) extends ..$parents""")
-          val (whereRules, whereTypes) = transformWhereRule(name, tpe.whereClause)
+          val (whereRules, whereTypes) = transformWhereRule(tpt, tpe.whereClause)
           val target = whereTypes.map(t => tq"""$cname.$t""") match {
             case Nil => tpt
             case Seq(one) =>
@@ -632,10 +643,12 @@ q"""MinSize[W.`$min`.T]"""*/
               tq"""$tpt Refined $refined"""
           }
           Seq(
-            q"""type $name = $target""",
+            //q"""type $name = $target""",
+            q"""case class $name(value: $target) extends ..$parents""",
             q"""object $cname {
 ..$whereRules
-}""")
+implicit val encoder = Encoder[$target].contramap[$name](_.value)
+implicit val decoder = Decoder[$target].map($cname(_))}""")
       }
     }
   }

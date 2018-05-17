@@ -6,7 +6,7 @@ import scala.collection.mutable.Builder
 private[p21] abstract class SeqDecoder[A, C[_]](decodeA: Decoder[A]) extends Decoder[C[A]] {
   protected def createBuilder(): Builder[A, C[A]]
 
-  def apply(c: HCursor): Decoder.Result[C[A]] = {
+  def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[C[A]] = {
     var current = c.downArray
     if (current.succeeded) {
       val builder = createBuilder()
@@ -27,7 +27,7 @@ private[p21] abstract class SeqDecoder[A, C[_]](decodeA: Decoder[A]) extends Dec
     }
   }
   
-  override def decodeAccumulating(c: HCursor): AccumulatingDecoder.Result[C[A]] = {
+  override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[C[A]] = {
     var current = c.downArray
     if(current.succeeded) {
       val builder = createBuilder()

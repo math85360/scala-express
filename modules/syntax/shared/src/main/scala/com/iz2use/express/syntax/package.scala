@@ -18,9 +18,10 @@ package object syntax {
   val Unknown = Logical.Unknown
 
   final case class NotFound()
-
-  implicit def notFoundPredicate[A]: Validate.Plain[A, NotFound] =
-    Validate.alwaysPassed(NotFound())
+  object NotFound {
+    implicit def notFoundPredicate[A]: Validate.Plain[A, NotFound] =
+      Validate.alwaysPassed(NotFound())
+  }
 
   case class Binary()
 }

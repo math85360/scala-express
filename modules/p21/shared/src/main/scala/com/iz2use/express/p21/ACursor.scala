@@ -35,6 +35,6 @@ abstract class ACursor(private val lastCursor: HCursor, private val lastOp: Curs
 
   //def downObject: ACursor
 
-  final def as[A](implicit d: Decoder[A]): Decoder.Result[A] = d.tryDecode(this)
+  final def as[A](implicit d: Decoder[A], strictness: DecoderStrictness): Decoder.Result[A] = d.tryDecode(this)
 
 }

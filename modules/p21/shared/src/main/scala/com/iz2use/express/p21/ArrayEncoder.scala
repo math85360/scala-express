@@ -3,16 +3,16 @@ package com.iz2use.express.p21
 import cats.Contravariant
 
 trait ArrayEncoder[A] extends RootEncoder[A] { self =>
-  final def apply(a: A): Step = Step.fromValues(encodeArray(a))
+  final def apply(a: A)(implicit strictness: EncoderStrictness): Step = Step.fromValues(encodeArray(a))
 
-  def encodeArray(a: A): Vector[Step]
+  def encodeArray(a: A)(implicit strictness: EncoderStrictness): Vector[Step]
 
   final def contramapArray[B](f: B => A): ArrayEncoder[B] = new ArrayEncoder[B] {
-    final def encodeArray(a: B) = self.encodeArray(f(a))
+    final def encodeArray(a: B)(implicit strictness: EncoderStrictness) = self.encodeArray(f(a))
   }
 
   final def mapStepArray(f: Vector[Step] => Vector[Step]): ArrayEncoder[A] = new ArrayEncoder[A] {
-    final def encodeArray(a: A): Vector[Step] = f(self.encodeArray(a))
+    final def encodeArray(a: A)(implicit strictness: EncoderStrictness): Vector[Step] = f(self.encodeArray(a))
   }
 }
 
@@ -20,7 +20,7 @@ final object ArrayEncoder {
   final def apply[A](implicit instance: ArrayEncoder[A]): ArrayEncoder[A] = instance
 
   final def instance[A](f: A => Vector[Step]): ArrayEncoder[A] = new ArrayEncoder[A] {
-    final def encodeArray(a: A): Vector[Step] = f(a)
+    final def encodeArray(a: A)(implicit strictness: EncoderStrictness): Vector[Step] = f(a)
   }
 
   implicit final val ArrayEncoderContravariant: Contravariant[ArrayEncoder] = new Contravariant[ArrayEncoder] {
