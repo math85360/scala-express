@@ -6,20 +6,20 @@ import scala.annotation.tailrec
 trait Dictionary {
   def add[A](value: A): Unit
 }
-case class TransformerContext(private val rootPackage: String = "") {
+final case class TransformerContext(private val rootPackage: String = "") {
   //private var names: Map[String, ast.SchemaBody] = Map.empty
   private var inheritingTraits: Map[String, Seq[String]] = Map.empty
   private var packageStack: List[Seq[String]] = rootPackage match {
     case "" => List()
     case r  => List(r.split('.'))
   }
-  def addInheritTraitTo(entity: String, parent: String): Unit = {
+  final def addInheritTraitTo(entity: String, parent: String): Unit = {
     val v = inheritingTraits.getOrElse(entity, Nil)
     inheritingTraits = inheritingTraits + (entity -> (parent +: v))
   }
-  def inheritingTraitsOf(entity: String) = inheritingTraits.getOrElse(entity, Nil)
+  final def inheritingTraitsOf(entity: String) = inheritingTraits.getOrElse(entity, Nil)
   private var currentPackage: List[String] = packageStack.reverse.flatten
-  def withPackage[A](name: String)(f: => A): A = {
+  final def withPackage[A](name: String)(f: => A): A = {
     val oldCurrentPackage = currentPackage
     packageStack = name.split('.') :: packageStack
     val newCurrentPackage = packageStack.reverse.flatten
@@ -29,39 +29,32 @@ case class TransformerContext(private val rootPackage: String = "") {
     currentPackage = oldCurrentPackage
     r
   }
-  def find(name: String): Option[Any] = {
-    @tailrec
-    def loop(rest: List[Map[String, Any]]): Option[Any] = rest match {
-      case Nil => None
-      case head :: tail => head.get(name) match {
-        case None  => loop(tail)
-        case found => found
+  @tailrec
+  private final def loopOnContext[A](rest: List[Map[String, Any]], f: Map[String, Any] => Option[A]): Option[A] = rest match {
+    case Nil => None
+    case head :: tail =>
+      f(head) match {
+        case None => loopOnContext(tail, f)
+        case some => some
       }
-    }
-    loop(stack)
   }
-  def targetPackage = currentPackage
+  final def find(name: String): Option[Any] =
+    loopOnContext(stack, _.get(name))
+
+  final def targetPackage = currentPackage
   private var stack: List[Map[String, Any]] = List(Map.empty)
-  def register[A](key: String, value: A): Unit = {
+  final def register[A](key: String, value: A): Unit = {
     if (key.nonEmpty) {
       val newMap = stack.head + (key -> value)
       stack = newMap :: stack.tail
     }
   }
-  def getExactName(name: String): String = {
-    @tailrec
-    def loop(rest: List[Map[String, Any]]): String = rest match {
-      case Nil => name
-      case head :: tail =>
-        head.find(_._1.equalsIgnoreCase(name)) match {
-          case Some((found, _)) => found
-          case None             => loop(tail)
-        }
-    }
-    loop(stack)
+  final def getExactName(name: String): String = {
+    loopOnContext(stack, _.find(_._1 equalsIgnoreCase name))
+      .fold(name)(_._1)
   }
-  def pushContext: Unit = stack = Map.empty[String, Any] :: stack
-  def popContext: Unit = stack = stack.tail
+  final def pushContext: Unit = stack = Map.empty[String, Any] :: stack
+  final def popContext: Unit = stack = stack.tail
 }
 object TransformerContext {
 }
@@ -103,6 +96,7 @@ object ScalaDefinition {
     q"import cats.syntax.functor._",
     q"import com.iz2use.express.syntax._",
     q"import com.iz2use.express.p21._",
+    q"import com.iz2use.express.p21.generic.encoder._",
     q"import eu.timepit.refined._",
     q"import eu.timepit.refined.api._",
     q"import eu.timepit.refined.boolean._",
@@ -146,7 +140,8 @@ q"""MinSize[W.`$min`.T]"""*/
       tq"""$tpe Refined $tpt"""
   }
 
-  def referenceToEntity(name: String)(implicit ctx: TransformerContext): universe.Tree = {
+  def referenceToEntity(wanted: String)(implicit ctx: TransformerContext): universe.Tree = {
+    val name = ctx.getExactName(wanted)
     def tpe(suffix: String = "") = Ident(TermName(name + suffix))
     ctx.find(name) match {
       case Some(a: ast.EntityDeclaration) =>
@@ -298,7 +293,7 @@ q"""MinSize[W.`$min`.T]"""*/
       val parents = entity.subtype.map(n => TermName(n)) ++ ctx.inheritingTraitsOf(entity.name).map(TermName(_))
       val parentEntities = loop(Nil, entity.subtype)
       val allAttributesOpt = detailedAttributes(parentEntities.flatMap(_.attributes) ++ entity.attributes)
-      val allAttributesList = allAttributesOpt.toList 
+      val allAttributesList = allAttributesOpt.toList
       val allAttributesFlatten = allAttributesList.flatten
       val definition = {
         val attributeDefinitions = entity.attributes.map {
@@ -347,8 +342,8 @@ q"""MinSize[W.`$min`.T]"""*/
         val decodeArgs = attrs map { case (idx, _, _, _) => q"r.at(${idx - 1})" }
         //val unapplyDecode = decodeArgs.foldRight[universe.Tree](q"HNil") { case (c, acc) => pq"""$c :: $acc""" }
         val name = q"""${entity.name}"""
-        (q"""ObjectEncoder.toHList($name){ (c:$tname) => $encodeArgs }""",
-          q"""Decoder[Repr].map { r => $compName(..$decodeArgs) }""")
+        (q"""ReprObjectEncoder[Repr].contramap{ (c:$tname) => $encodeArgs }""",
+          q"""ReprDecoder[Repr].map { r => $compName(..$decodeArgs) }""")
       }
       def subtypeCodec(subtypes: Seq[String], supertypeCodec: Option[(universe.Tree, universe.Tree)] = None): (universe.Tree, universe.Tree) = {
         val (encoderCases, decoders) =
@@ -647,8 +642,8 @@ q"""MinSize[W.`$min`.T]"""*/
             q"""case class $name(value: $target) extends ..$parents""",
             q"""object $cname {
 ..$whereRules
-implicit val encoder = Encoder[$target].contramap[$name](_.value)
-implicit val decoder = Decoder[$target].map($cname(_))}""")
+implicit val encoder : Encoder[$name] = Encoder[$target].contramap[$name](_.value)
+implicit val decoder : Decoder[$name] = Decoder[$target].map($cname(_))}""")
       }
     }
   }

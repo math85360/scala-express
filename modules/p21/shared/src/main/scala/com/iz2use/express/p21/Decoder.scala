@@ -76,6 +76,16 @@ trait Decoder[A] extends Serializable { self =>
       }
   }
 
+  final def withErrorMessage(message: String): Decoder[A] = new Decoder[A] {
+    final def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[A] = self(c) match {
+      case r @ Right(_) => r
+      case Left(e)      => Left(DecodingFailure(message + " " + e.message, e.history))
+    }
+
+    override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[A] =
+      self.decodeAccumulating(c).leftMap(_.map(e => DecodingFailure(message, e.history)))
+  }
+
   /*def orElse[B<:A, C>:B](other: Decoder[C]): Decoder[B] = apply(c) match {
     case Left(e) => other(c)
   }*/
@@ -138,6 +148,10 @@ final object Decoder extends MidPriorityDecoder {
     }
     case StepUnknown => Unknown
   }
+  
+  implicit final val decodeBinary: Decoder[Binary] = instancePf("Binary") {
+    case StepUnknown => Binary()
+  }
 
   implicit final val decodeLong: Decoder[Long] = instancePf("Long") {
     case StepLong(v) => v
@@ -160,6 +174,23 @@ final object Decoder extends MidPriorityDecoder {
     case StepReference(id) => RefTo(id)
   }
 
+  final def deriveDecoder[A](implicit decoder: Lazy[DerivedDecoder[A]]): Decoder[A] = decoder.value
+
+  implicit final def decodeCanBuildFrom[A, C[_]](implicit
+    d: Decoder[A],
+                                                 cbf: CanBuildFrom[Nothing, A, C[A]]): Decoder[C[A]] = new SeqDecoder[A, C](d, cbf)
+
+  implicit final def decodeSet[A: Decoder]: Decoder[Set[A]] =
+    decodeCanBuildFrom[A, List].map(_.toSet).withErrorMessage("[A]Set[A]")
+
+  implicit final def decodeList[A: Decoder]: Decoder[List[A]] =
+    decodeCanBuildFrom[A, List].withErrorMessage("[A]List[A]")
+    
+  implicit final def decodeVector[A: Decoder]: Decoder[Vector[A]] =
+    decodeCanBuildFrom[A, Vector].withErrorMessage("[A]Vector[A]")
+
+  /*final def deriveHList[A](implicit decoder: L
+
   implicit final def decodeArray[A](implicit decodeA: Decoder[A], cbf: CanBuildFrom[Nothing, A, Array[A]]): Decoder[Array[A]] = new SeqDecoder[A, Array](decodeA) {
     final protected def createBuilder(): Builder[A, Array[A]] = cbf.apply()
   }
@@ -174,7 +205,7 @@ final object Decoder extends MidPriorityDecoder {
   }
   implicit final def decodeVector[A](implicit decodeA: Decoder[A], cbf: CanBuildFrom[Nothing, A, Vector[A]]): Decoder[Vector[A]] = new SeqDecoder[A, Vector](decodeA) {
     final protected def createBuilder(): Builder[A, Vector[A]] = cbf.apply()
-  }
+  }*/
 
   private[this] final val rightNone: Either[DecodingFailure, Option[Nothing]] = Right(None)
 
@@ -222,22 +253,45 @@ trait MidPriorityDecoder extends LowPriorityDecoder {
   }
 
 }
-trait LowPriorityDecoder extends LowestPriorityDecoder {
-  implicit final def decodeHList[A, H <: HList](implicit gen: Generic.Aux[A, H], hEncoder: Decoder[H]): Decoder[A] =
-    hEncoder.map(gen.from(_))
-  implicit final val decodeHNil: Decoder[HNil] = Decoder.const(HNil)
-  implicit final def decodeHCons[H, T <: HList](implicit decodeH: Decoder[H], decodeT: Lazy[Decoder[T]]): Decoder[H :: T] = new Decoder[H :: T] {
-    def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[H :: T] = {
-      val first = c.downArray
-      Decoder.resultInstance.map2(first.as(decodeH, strictness), decodeT.value.tryDecode(first.delete))(_ :: _)
+abstract class ReprDecoder[A] extends Decoder[A]
+final object ReprDecoder {
+  def apply[A](implicit decoder: ReprDecoder[A]):ReprDecoder[A] = decoder
+  
+  implicit final val decodeHNil: ReprDecoder[HNil] = new ReprDecoder[HNil] {
+    def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[HNil] = Right(HNil)
+  }
+
+  implicit final def decodeHCons[H, T <: HList](implicit decodeH: Decoder[H], decodeT: Lazy[ReprDecoder[T]]): ReprDecoder[H :: T] =
+    new ReprDecoder[H :: T] {
+      def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[H :: T] = {
+        val first = c.downArray
+        Decoder.resultInstance.map2(first.as(decodeH, strictness), decodeT.value.tryDecode(first.delete))(_ :: _)
+      }
+      override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[H :: T] = {
+        val first = c.downArray
+        AccumulatingDecoder.resultInstance.map2(
+          decodeH.tryDecodeAccumulating(first),
+          decodeT.value.tryDecodeAccumulating(first.delete))(_ :: _)
+      }
     }
-    override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[H :: T] = {
-      val first = c.downArray
-      AccumulatingDecoder.resultInstance.map2(
-        decodeH.tryDecodeAccumulating(first),
-        decodeT.value.tryDecodeAccumulating(first.delete))(_ :: _)
+}
+abstract class DerivedDecoder[A] extends Decoder[A]
+final object DerivedDecoder {
+  implicit final def deriveDecoder[A, R](implicit
+    gen: Generic.Aux[A, R],
+                                         decode: Lazy[ReprDecoder[R]]): DerivedDecoder[A] = new DerivedDecoder[A] {
+    def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[A] = decode.value(c) match {
+      case Right(r) => Right(gen.from(r))
+      case Left(e)  => Left(e)
+    }
+    override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[A] = {
+      decode.value.decodeAccumulating(c).map(gen.from)
     }
   }
+}
+trait LowPriorityDecoder extends LowestPriorityDecoder {
+  /*implicit final def decodeHList[A, H <: HList](implicit gen: Generic.Aux[A, H], hEncoder: Lazy[ReprDecoder[H]]): Decoder[A] =
+    hEncoder.value.map(gen.from(_))*/
 
   implicit final val decoderCNil: Decoder[CNil] = new Decoder[CNil] {
     def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[CNil] = Left(DecodingFailure("CNil", c.history))
@@ -250,7 +304,5 @@ trait LowPriorityDecoder extends LowestPriorityDecoder {
 }
 
 trait LowestPriorityDecoder {
-  implicit final def decodeAdtNoDiscr[A, Repr <: Coproduct](implicit
-    gen: Generic.Aux[A, Repr],
-                                                            decodeRepr: Decoder[Repr]): Decoder[A] = decodeRepr.map(gen.from)
+
 }

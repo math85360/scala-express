@@ -51,6 +51,9 @@ final object Encoder extends MidPriorityImplicitGenericEncoder {
     case Logical.Unknown => StepUnknown
 
   }
+  implicit final val encodeBinary: Encoder[Binary] = instance[Binary] {
+    case _ => StepNull
+  }
   final val encodeLiteral: Encoder[String] = instance(Step.fromLiteral)
 
   implicit final def encodeRefTo[A]: Encoder[RefTo[A]] = instance[RefTo[A]] { v =>
@@ -71,6 +74,8 @@ final object Encoder extends MidPriorityImplicitGenericEncoder {
   }
 
   implicit final val encodeNone = instance[None.type] { case None => StepNull }
+  
+  final def deriveEncoder[A](implicit encoder: Lazy[generic.encoder.DerivedObjectEncoder[A]]):Encoder[A] = encoder.value
 
   /*implicit final def encodeTraversable[A, C[_]](implicit encodeA: Encoder[A]): Encoder[Traversable[A]] =
       instance[B[A]] { traversable =>

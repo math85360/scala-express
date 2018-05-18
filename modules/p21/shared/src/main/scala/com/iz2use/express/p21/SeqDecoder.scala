@@ -2,14 +2,15 @@ package com.iz2use.express.p21
 
 import cats.data.{ NonEmptyList, Validated }
 import scala.collection.mutable.Builder
+import scala.collection.generic.CanBuildFrom
 
-private[p21] abstract class SeqDecoder[A, C[_]](decodeA: Decoder[A]) extends Decoder[C[A]] {
-  protected def createBuilder(): Builder[A, C[A]]
+private[p21] final class SeqDecoder[A, C[_]](decodeA: Decoder[A], cbf:CanBuildFrom[Nothing ,A, C[A]]) extends Decoder[C[A]] {
+  //protected def createBuilder(): Builder[A, C[A]]
 
   def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[C[A]] = {
     var current = c.downArray
     if (current.succeeded) {
-      val builder = createBuilder()
+      val builder = cbf.apply
       var failed: DecodingFailure = null
       while (failed.eq(null) && current.succeeded) {
         decodeA(current.asInstanceOf[HCursor]) match {
@@ -21,7 +22,7 @@ private[p21] abstract class SeqDecoder[A, C[_]](decodeA: Decoder[A]) extends Dec
       }
       if (failed.eq(null)) Right(builder.result) else Left(failed)
     } else {
-      if (c.value.isArray) Right(createBuilder().result) else {
+      if (c.value.isArray) Right(cbf().result) else {
         Left(DecodingFailure("CanBuildFrom for A", c.history))
       }
     }
@@ -30,7 +31,7 @@ private[p21] abstract class SeqDecoder[A, C[_]](decodeA: Decoder[A]) extends Dec
   override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[C[A]] = {
     var current = c.downArray
     if(current.succeeded) {
-      val builder = createBuilder()
+      val builder = cbf.apply
       var failed = false
       val failures = List.newBuilder[DecodingFailure]
       
@@ -53,7 +54,7 @@ private[p21] abstract class SeqDecoder[A, C[_]](decodeA: Decoder[A]) extends Dec
         }
       }
     }else {
-      if(c.value.isArray) Validated.valid(createBuilder().result) else {
+      if(c.value.isArray) Validated.valid(cbf().result) else {
         Validated.invalidNel(DecodingFailure("CanBuildFrom for A", c.history))
       }
     }
