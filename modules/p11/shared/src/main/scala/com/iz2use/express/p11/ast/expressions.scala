@@ -72,7 +72,7 @@ case class DomainRule(name: Option[String], expr: Expression)
 case class EnumerationItem(name: String)
 case class EnumerationReference(typeRef: Option[String], enumerationRef: String) extends Expression
 case class EnumerationType(extensible: Boolean, items: Option[Either[Seq[EnumerationItem], BasedOnEnumeration]]) extends ConstructedType
-sealed trait Expression extends NumericExpression with LogicalExpression
+sealed trait Expression extends NumericExpression with LogicalExpression with RootExpression
 
 sealed trait FunctionOrEntityConstructor
 case class FunctionCallOrEntityConstructor(functionOrEntity: FunctionOrEntityConstructor, parameterList: Option[Seq[Expression]]) extends QualifiableFactor with Expression
@@ -90,7 +90,7 @@ case class Interval(lowBound: Expression, lowInclusive: Boolean, item: Expressio
 
 case class ListType[T <: AggregationTypeLevel](bounds: Option[Bounds], unique: Boolean, of: T) extends AggregationType[T]
 sealed trait Literal extends Primary
-sealed trait LogicalExpression
+sealed trait LogicalExpression extends RootExpression
 case class LogicalLiteral(value: Option[Boolean]) extends Literal
 case object LogicalType extends SimpleType
 
@@ -98,7 +98,7 @@ case class MultipleOperation[Op <: Operator](initialValue: Expression, steps: Se
 
 sealed trait NumberLiteral extends Literal
 case object NumberType extends SimpleType
-sealed trait NumericExpression
+sealed trait NumericExpression extends RootExpression
 
 case class Parameter(name: String, tpe: ParameterType)
 sealed trait ParameterType extends AggregationTypeLevel
@@ -116,6 +116,7 @@ case class RealType(precision: Option[NumericExpression]) extends SimpleType
 case class RenamedResource(resourceRef: String, as: String)
 case class RenamedType(namedType: String, as: String)
 case class Repetition(expression: Expression, count: NumericExpression) extends Expression
+sealed trait RootExpression
 sealed trait RootType
 
 case class SelectTypeExtensible(generic: Boolean)

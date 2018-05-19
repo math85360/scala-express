@@ -37,6 +37,7 @@ final object Encoder extends MidPriorityImplicitGenericEncoder {
         f(a)(a)
     }
 
+  implicit final val encodeUnit: Encoder[Unit] = instance(_ => Step.fromEmpty)
   implicit final val encodeBoolean: Encoder[Boolean] = instance(Step.fromBoolean)
 
   implicit final val encodeString: Encoder[String] = instance(Step.fromString)
@@ -74,8 +75,8 @@ final object Encoder extends MidPriorityImplicitGenericEncoder {
   }
 
   implicit final val encodeNone = instance[None.type] { case None => StepNull }
-  
-  final def deriveEncoder[A](implicit encoder: Lazy[generic.encoder.DerivedObjectEncoder[A]]):Encoder[A] = encoder.value
+
+  final def deriveEncoder[A](implicit encoder: Lazy[generic.encoder.DerivedObjectEncoder[A]]): Encoder[A] = encoder.value
 
   /*implicit final def encodeTraversable[A, C[_]](implicit encodeA: Encoder[A]): Encoder[Traversable[A]] =
       instance[B[A]] { traversable =>
@@ -129,7 +130,7 @@ trait MidPriorityImplicitGenericEncoder extends LowPriorityImplicitGenericEncode
         }
     }
 }
-trait LowPriorityImplicitGenericEncoder extends LowestPriorityImplicitGenericEncoder {
+trait LowPriorityImplicitGenericEncoder extends CoproductEncoder {
 
   implicit def genericObjectEncoder[A, H <: HList](
     implicit
@@ -141,18 +142,6 @@ trait LowPriorityImplicitGenericEncoder extends LowestPriorityImplicitGenericEnc
       }
     }
 
-  implicit final val encodeCNil: ObjectEncoder[CNil] =
-    ObjectEncoder.instance(cnil => throw new Exception("Inconceivable !"))
-
-  implicit final def encodeCCons[L, R <: Coproduct](implicit
-    encodeL: Encoder[L],
-                                                    encodeR: Encoder[R]): Encoder[L :+: R] = new Encoder[L :+: R] {
-    def apply(a: L :+: R)(implicit strictness: EncoderStrictness): Step = a match {
-      case Inl(l) => encodeL(l)
-      case Inr(r) => encodeR(r)
-    }
-  }
-
   /*implicit def coproductObjectEncoder[H, T <: Coproduct](implicit
     hEncoder: Lazy[Encoder[H]],
                                                          tEncoder: ObjectEncoder[T]): ObjectEncoder[H :+: T] = ObjectEncoder.instance {
@@ -162,10 +151,27 @@ trait LowPriorityImplicitGenericEncoder extends LowestPriorityImplicitGenericEnc
 
 }
 
-trait LowestPriorityImplicitGenericEncoder {
+/*trait LowestPriorityImplicitGenericEncoder {
   implicit def encodeAdtNoDiscr[A, Repr <: Coproduct](implicit
     gen: Generic.Aux[A, Repr],
                                                       encodeRepr: Encoder[Repr]): Encoder[A] =
     encodeRepr.contramap(gen.to)
 
+}*/
+
+trait CoproductEncoder {
+  implicit final val encodeCNil: Encoder[CNil] =
+    new Encoder[CNil] {
+      def apply(a: CNil)(implicit strictness: EncoderStrictness): Step =
+        throw new Exception("Inconceivable !")
+    }
+
+  implicit final def encodeCCons[L, R <: Coproduct](implicit
+    encodeL: Encoder[L],
+                                                    encodeR: Encoder[R]): Encoder[L :+: R] = new Encoder[L :+: R] {
+    def apply(a: L :+: R)(implicit strictness: EncoderStrictness): Step = a match {
+      case Inl(l) => encodeL(l)
+      case Inr(r) => encodeR(r)
+    }
+  }
 }

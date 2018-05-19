@@ -1,12 +1,11 @@
-package com.iz2use.express.ifc
+package com.iz2use.express.ifc.ifc4
 
 import eu.timepit.refined._
-import eu.timepit.refined.api.Refined
 import eu.timepit.refined.collection._
-//import eu.timepit.refined.auto._
 import utest._
 import com.iz2use.express.p21._
 import com.iz2use.express.p21.syntax._
+import com.iz2use.express.syntax._
 
 object WallTest extends TestSuite {
   
@@ -14,7 +13,8 @@ object WallTest extends TestSuite {
     implicit val strictness = Strictness.encodeStrictOrConvert
     implicit val db = DatabaseIfc()
     var i = 1
-    val building = IfcBuilding(IfcGloballyUniqueId.next, name = "IfcBuilding")
+    val building = IfcBuilding(IfcGloballyUniqueId.next, name = IfcLabel("IfcBuilding"))
+    db.insert(building)
     'TestIfcBuilding{
       //assert(db.counter == 2)
     }
@@ -43,14 +43,6 @@ object WallTest extends TestSuite {
         Set[RefTo[IfcUnit]](
           lengthUnit)))
     'TestIfcProjectEncoder{
-      Encoder[IfcGloballyUniqueId]
-      Encoder[Option[RefTo[IfcOwnerHistory]]]
-      Encoder[Option[IfcLabel]]
-      Encoder[Option[IfcText]]
-      Encoder[RefTo[IfcRepresentationContext]]
-      Encoder[Set[RefTo[IfcRepresentationContext]] Refined NonEmpty]
-      Encoder[Option[Set[RefTo[IfcRepresentationContext]] Refined NonEmpty]]
-      Encoder[Option[RefTo[IfcUnitAssignment]]]
       val encoder = Encoder[IfcProject]
       assert(encoder ne null)
       val v = encoder(project)

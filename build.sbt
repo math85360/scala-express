@@ -1,6 +1,6 @@
 import org.scalajs.sbtplugin.cross.{ CrossProject, CrossType }
 
-version in ThisBuild := "0.0.1-SNAPSHOT"
+scalaVersion in ThisBuild := "2.11.11"
 
 organization in ThisBuild := "com.iz2use"
 

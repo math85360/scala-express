@@ -137,6 +137,10 @@ final object Decoder extends MidPriorityDecoder {
     case StepLiteral(literal) => literal.stripPrefix(".").stripSuffix(".")
   }
 
+  implicit final val decodeUnit: Decoder[Unit] = instancePf("Unit") {
+    case StepEmpty => (): Unit
+  }
+
   implicit final val decodeBoolean: Decoder[Boolean] = instancePf("Boolean") {
     case StepBoolean(boolean) => boolean
   }
@@ -148,7 +152,7 @@ final object Decoder extends MidPriorityDecoder {
     }
     case StepUnknown => Unknown
   }
-  
+
   implicit final val decodeBinary: Decoder[Binary] = instancePf("Binary") {
     case StepUnknown => Binary()
   }
@@ -174,7 +178,7 @@ final object Decoder extends MidPriorityDecoder {
     case StepReference(id) => RefTo(id)
   }
 
-  final def deriveDecoder[A](implicit decoder: Lazy[DerivedDecoder[A]]): Decoder[A] = decoder.value
+  final def deriveDecoder[A](implicit decoder: Lazy[generic.decoder.DerivedDecoder[A]]): Decoder[A] = decoder.value
 
   implicit final def decodeCanBuildFrom[A, C[_]](implicit
     d: Decoder[A],
@@ -185,7 +189,7 @@ final object Decoder extends MidPriorityDecoder {
 
   implicit final def decodeList[A: Decoder]: Decoder[List[A]] =
     decodeCanBuildFrom[A, List].withErrorMessage("[A]List[A]")
-    
+
   implicit final def decodeVector[A: Decoder]: Decoder[Vector[A]] =
     decodeCanBuildFrom[A, Vector].withErrorMessage("[A]Vector[A]")
 
@@ -235,7 +239,7 @@ final object Decoder extends MidPriorityDecoder {
 
 }
 
-trait MidPriorityDecoder extends LowPriorityDecoder {
+trait MidPriorityDecoder extends CoproductDecoder {
   implicit final def decodeRefined[T, P, F[_, _]](
     implicit
     underlying:  Decoder[T],
@@ -253,46 +257,8 @@ trait MidPriorityDecoder extends LowPriorityDecoder {
   }
 
 }
-abstract class ReprDecoder[A] extends Decoder[A]
-final object ReprDecoder {
-  def apply[A](implicit decoder: ReprDecoder[A]):ReprDecoder[A] = decoder
-  
-  implicit final val decodeHNil: ReprDecoder[HNil] = new ReprDecoder[HNil] {
-    def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[HNil] = Right(HNil)
-  }
 
-  implicit final def decodeHCons[H, T <: HList](implicit decodeH: Decoder[H], decodeT: Lazy[ReprDecoder[T]]): ReprDecoder[H :: T] =
-    new ReprDecoder[H :: T] {
-      def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[H :: T] = {
-        val first = c.downArray
-        Decoder.resultInstance.map2(first.as(decodeH, strictness), decodeT.value.tryDecode(first.delete))(_ :: _)
-      }
-      override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[H :: T] = {
-        val first = c.downArray
-        AccumulatingDecoder.resultInstance.map2(
-          decodeH.tryDecodeAccumulating(first),
-          decodeT.value.tryDecodeAccumulating(first.delete))(_ :: _)
-      }
-    }
-}
-abstract class DerivedDecoder[A] extends Decoder[A]
-final object DerivedDecoder {
-  implicit final def deriveDecoder[A, R](implicit
-    gen: Generic.Aux[A, R],
-                                         decode: Lazy[ReprDecoder[R]]): DerivedDecoder[A] = new DerivedDecoder[A] {
-    def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[A] = decode.value(c) match {
-      case Right(r) => Right(gen.from(r))
-      case Left(e)  => Left(e)
-    }
-    override def decodeAccumulating(c: HCursor)(implicit strictness: DecoderStrictness): AccumulatingDecoder.Result[A] = {
-      decode.value.decodeAccumulating(c).map(gen.from)
-    }
-  }
-}
-trait LowPriorityDecoder extends LowestPriorityDecoder {
-  /*implicit final def decodeHList[A, H <: HList](implicit gen: Generic.Aux[A, H], hEncoder: Lazy[ReprDecoder[H]]): Decoder[A] =
-    hEncoder.value.map(gen.from(_))*/
-
+trait CoproductDecoder {
   implicit final val decoderCNil: Decoder[CNil] = new Decoder[CNil] {
     def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[CNil] = Left(DecodingFailure("CNil", c.history))
   }
@@ -301,8 +267,4 @@ trait LowPriorityDecoder extends LowestPriorityDecoder {
     decodeL: Decoder[L],
                                                     decodeR: Decoder[R]): Decoder[L :+: R] =
     decodeL.map(Inl(_)).or(decodeR.map(Inr(_)))
-}
-
-trait LowestPriorityDecoder {
-
 }

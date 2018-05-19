@@ -36,9 +36,9 @@ package ast {
   sealed trait EntityBody
   
   sealed trait Attribute
-  case class ExplicitAttribute(names: AttributeName, optional: Boolean, tpe: ParameterType) 
-  case class DerivedAttribute(names: AttributeName, tpe: ParameterType, value: Expression) 
-  case class InverseAttribute(names: AttributeName, tpe: Option[InverseAggregateType], source: String, entity: Option[String], attribute: String) 
+  case class ExplicitAttribute(names: AttributeName, optional: Boolean, tpe: ParameterType) extends Attribute 
+  case class DerivedAttribute(names: AttributeName, tpe: ParameterType, value: Expression) extends Attribute
+  case class InverseAttribute(names: AttributeName, tpe: Option[InverseAggregateType], source: String, entity: Option[String], attribute: String) extends Attribute 
   case class UniqueClause(name: Option[String], source: Seq[UniqueSource])
   sealed trait UniqueSource
   case class ReferencedAttribute(attribute: String) extends UniqueSource

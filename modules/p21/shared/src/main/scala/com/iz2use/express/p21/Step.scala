@@ -30,6 +30,10 @@ final case class StepBoolean(value: Boolean) extends Step {
   import Step._
   final def foldWith[X](folder: Folder[X]): X = folder.onBoolean(value)
 }
+final case object StepEmpty extends Step {
+  import Step._
+  final def foldWith[X](folder: Folder[X]): X = folder.onEmpty
+}
 final case object StepUnknown extends Step {
   import Step._
   final def foldWith[X](folder: Folder[X]): X = folder.onUnknown
@@ -102,7 +106,9 @@ object Step {
   final val True: Step = StepBoolean(true)
   final val False: Step = StepBoolean(false)
   final val Unknown: Step = StepUnknown
+  final val Empty: Step = StepEmpty
 
+  final def fromEmpty = Empty
   final def fromBoolean(a: Boolean) = if (a) True else False
   final def fromString(a: String) = StepString(a)
   final def fromInt(a: Int) = StepInt(a)
@@ -124,6 +130,7 @@ object Step {
     def onArray(value: Vector[Step]): X
     def onObject(value: StepObject): X
     def onUnknown: X
+    def onEmpty: X
     def onLiteral(value: String): X
   }
 }

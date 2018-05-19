@@ -96,6 +96,7 @@ object ScalaDefinition {
     q"import cats.syntax.functor._",
     q"import com.iz2use.express.syntax._",
     q"import com.iz2use.express.p21._",
+    q"import com.iz2use.express.p21.generic.decoder._",
     q"import com.iz2use.express.p21.generic.encoder._",
     q"import eu.timepit.refined._",
     q"import eu.timepit.refined.api._",
@@ -113,6 +114,14 @@ object ScalaDefinition {
     def asPackage = s match {
       case head :: second :: tail => tail.foldLeft[universe.RefTree](q"""${TermName(head)}.${TermName(second)}""")((acc, v) => q"""$acc.${TermName(v)}""")
     }
+  }
+
+  implicit def seqTransformer[A, B](implicit trsf: Transformer[A, B]): Transformer[Seq[A], Seq[B]] = Transformer.instance { implicit ctx => (in: Seq[A]) =>
+    in.map(trsf.impl(_))
+  }
+
+  implicit def optionTransformer[A, B](implicit trsf: Transformer[A, B]): Transformer[Option[A], Option[B]] = Transformer.instance { implicit ctx => (in: Option[A]) =>
+    in.map(trsf.impl(_))
   }
 
   implicit val boundsTransformer: Transformer[ast.Bounds, universe.Tree] = Transformer.instance { implicit ctx =>
@@ -135,8 +144,7 @@ q"""MinSize[W.`$min`.T]"""*/
   }
   def composeWithBounds(tpe: universe.Tree, boundsOpt: Option[ast.Bounds])(implicit ctx: TransformerContext) = boundsOpt match {
     case None => tpe
-    case Some(bounds) =>
-      val tpt = Transformer(bounds)
+    case Some(Transformed(tpt)) =>
       tq"""$tpe Refined $tpt"""
   }
 
@@ -160,11 +168,9 @@ q"""MinSize[W.`$min`.T]"""*/
   }
   implicit val parameterTypeTransformer = Transformer.instance[ast.ParameterType, universe.Tree]
   {*/
-      case ast.ArrayType(boundsOpt, optionalAllowed, uniqueOnly, of) =>
-        val tpt = Transformer(of)
+      case ast.ArrayType(boundsOpt, optionalAllowed, uniqueOnly, Transformed(tpt)) =>
         composeWithBounds(tq"""Array[$tpt]""", boundsOpt)
-      case ast.BagType(boundsOpt, of) =>
-        val tpt = Transformer(of)
+      case ast.BagType(boundsOpt, Transformed(tpt)) =>
         composeWithBounds(tq"""Seq[$tpt]""", boundsOpt)
       case ast.BinaryType(width) =>
         tq"""Binary"""
@@ -174,8 +180,7 @@ q"""MinSize[W.`$min`.T]"""*/
         Ident(TermName(label))
       case ast.IntegerType =>
         tq"""Int"""
-      case ast.ListType(boundsOpt, unique, of) =>
-        val tpt = Transformer(of)
+      case ast.ListType(boundsOpt, unique, Transformed(tpt)) =>
         composeWithBounds(tq"""List[$tpt]""", boundsOpt)
       case ast.LogicalType =>
         tq"""Logical"""
@@ -183,8 +188,7 @@ q"""MinSize[W.`$min`.T]"""*/
         tq"""Double"""
       case ast.RealType(width) =>
         tq"""Double"""
-      case ast.SetType(boundsOpt, of) =>
-        val tpt = Transformer(of)
+      case ast.SetType(boundsOpt, Transformed(tpt)) =>
         composeWithBounds(tq"""Set[$tpt]""", boundsOpt)
       case ast.StringType(maxLength) =>
         maxLength match {
@@ -202,17 +206,38 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
+  private final def getAttributeName(name: ast.AttributeName) = name match {
+    case ast.SimpleAttributeName(name)         => TermName(name.lowerFirst)
+    case ast.RedeclaredAttribute(source, None) => TermName(source.attribute.lowerFirst)
+  }
+
   object Attribute {
-    def unapply(attribute: ast.ExplicitAttribute)(implicit context: TransformerContext): Option[(universe.TermName, universe.Tree, Option[universe.Tree])] = {
-      val tpt = Transformer(attribute.tpe)
-      val (tptOpt, default) = attribute.optional match {
-        case false => (tpt, None)
-        case true  => (tq"Option[$tpt]", Some(q"""None"""))
+    sealed trait AttributeConversion[A, B] {
+      type Repr = B
+      def apply(attribute: A)(implicit context: TransformerContext): Option[B]
+    }
+
+    implicit final val explicitAttributeConversion = new AttributeConversion[ast.ExplicitAttribute, (universe.TermName, universe.Tree, Option[universe.Tree])] {
+      def apply(attribute: ast.ExplicitAttribute)(implicit context: TransformerContext): Option[Repr] = {
+        val Transformed(tpt) = attribute.tpe
+        val (tptOpt, default) = attribute.optional match {
+          case false => (tpt, None)
+          case true  => (tq"Option[$tpt]", Some(q"""None"""))
+        }
+        val name = getAttributeName(attribute.names)
+        Some((name, tptOpt, default))
       }
-      val name = attribute.names match {
-        case ast.SimpleAttributeName(name) => TermName(name.lowerFirst)
+    }
+    implicit final val derivedAttributeConversion = new AttributeConversion[ast.DerivedAttribute, (universe.TermName, universe.Tree, universe.Tree)] {
+      def apply(attribute: ast.DerivedAttribute)(implicit context: TransformerContext): Option[Repr] = {
+        val Transformed(tpt) = attribute.tpe
+        val name = getAttributeName(attribute.names)
+        val Transformed(expr) = attribute.value
+        Some((name, tpt, expr))
       }
-      Some((name, tptOpt, default))
+    }
+    def unapply[A, B](attribute: A)(implicit context: TransformerContext, conversion: AttributeConversion[A, B]): Option[B] = {
+      conversion(attribute)
     }
   }
 
@@ -248,11 +273,11 @@ q"""MinSize[W.`$min`.T]"""*/
     (trees, wrs)
   }
 
-  type DetailedAttribute = (Int, TermName, universe.Tree, Option[universe.Tree])
+  type IndexedAttribute = (Int, TermName, universe.Tree, Option[universe.Tree])
 
-  def detailedAttributes(attributes: Seq[ast.ExplicitAttribute])(implicit context: TransformerContext): Option[Seq[DetailedAttribute]] = {
+  def indexedAttributes(attributes: Seq[ast.ExplicitAttribute])(implicit context: TransformerContext): Option[Seq[IndexedAttribute]] = {
     @tailrec
-    def loop(index: Int, acc: Seq[DetailedAttribute], rest: Seq[ast.ExplicitAttribute]): Seq[DetailedAttribute] = rest match {
+    def loop(index: Int, acc: Seq[IndexedAttribute], rest: Seq[ast.ExplicitAttribute]): Seq[IndexedAttribute] = rest match {
       case Seq() => acc
       case Seq(Attribute(name, tpe, defaultOpt), tail @ _*) =>
         val value = (index, name, tpe, defaultOpt)
@@ -269,6 +294,7 @@ q"""MinSize[W.`$min`.T]"""*/
 
   implicit val entityTransformer = Transformer.typeInstance[ast.EntityDeclaration, Seq[universe.Tree]](_.name) { implicit ctx =>
     { entity =>
+      ctx.pushContext
       val tname = TypeName(entity.name)
       val isAbstract = entity.supertype match {
         case Some(ast.AbstractEntityDeclaration) => true
@@ -290,16 +316,30 @@ q"""MinSize[W.`$min`.T]"""*/
               case None                           => loop(supertypes, tail)
             }
         }
-      val parents = entity.subtype.map(n => TermName(n)) ++ ctx.inheritingTraitsOf(entity.name).map(TermName(_))
-      val parentEntities = loop(Nil, entity.subtype)
-      val allAttributesOpt = detailedAttributes(parentEntities.flatMap(_.attributes) ++ entity.attributes)
-      val allAttributesList = allAttributesOpt.toList
-      val allAttributesFlatten = allAttributesList.flatten
+      val parents = entity.subtype.map(n => TermName(n)) ++ ctx.inheritingTraitsOf(entity.name).map(TermName(_)) :+ TermName("ExpressEntity")
+      val entityTree = loop(Nil, entity.subtype) :+ entity
+      val indexedAllAttributesOpt = indexedAttributes(entityTree.flatMap(_.attributes))
+      val derivedAttributes =
+        for {
+          entity <- entityTree
+          attr <- entity.derivedAttributes
+          TermName(name) = getAttributeName(attr.names)
+        } yield {
+          ctx.register(name, attr)
+          name
+        }
+      val indexedAllAttributesList = indexedAllAttributesOpt.toList
+      val indexedAllAttributesFlatten = indexedAllAttributesList.flatten
+      for { (_, TermName(name), tpe, _) <- indexedAllAttributesFlatten } ctx.register(name, tpe)
       val definition = {
-        val attributeDefinitions = entity.attributes.map {
+        val derivedAttributeDefinitions = entity.derivedAttributes.map {
+          case Attribute(defName, tpe, expr) => q"""lazy val $defName : $tpe = $expr"""
+        }
+        val explicitAttributeDefinitions = entity.attributes.map {
           case Attribute(defName, optionalType, _) => q"""def $defName : $optionalType"""
         }
-        if (isAbstract || allAttributesOpt.isEmpty)
+        val attributeDefinitions = explicitAttributeDefinitions ++ derivedAttributeDefinitions
+        if (isAbstract || indexedAllAttributesOpt.isEmpty)
           q"""trait $tname extends ..$parents {..$attributeDefinitions}"""
         else
           /*if (attributeDefinitions.isEmpty)
@@ -307,10 +347,18 @@ q"""MinSize[W.`$min`.T]"""*/
             else*/
           q"""abstract class $tname extends ..$parents {..$attributeDefinitions}"""
       }
-      def applyDefinition: Seq[universe.Tree] = allAttributesList.flatMap { lst =>
-        val (applyParams, temps, inits) = lst.map({
-          case (index, name, tpe, defaultOpt) =>
-            val temp = TermName(s"_$index")
+      def applyDefinition: Seq[universe.Tree] = indexedAllAttributesList.flatMap { lst =>
+        val (applyParams, temps, inits) = (for {
+          (index, name, tpe, defaultOpt) <- lst
+          TermName(nameStr) = name
+          if !derivedAttributes.contains(nameStr)
+        } yield {
+          val temp = TermName(s"_$index")
+          if (derivedAttributes.contains(nameStr)) {
+            (q"""val $name: Unit = ()""",
+              q"""""",
+              q"""""")
+          } else {
             val arg = defaultOpt match {
               case Some(value) => q"""val $name: $tpe = $value"""
               case None        => q"""val $name: $tpe"""
@@ -318,10 +366,24 @@ q"""MinSize[W.`$min`.T]"""*/
             (arg,
               q"""val $temp = $name""",
               q"""val $name : $tpe = $temp""")
+          }
         }).unzip3
+        val productElements = for {
+          (index, name, _, _) <- lst
+        } yield cq"${index - 1} => $name"
         Seq(q"""  def apply(..$applyParams) : $tname = {
     ..$temps
-    new $tname { ..$inits }
+    new $tname {
+    ..$inits
+    def hashCode(): Int = {
+      scala.runtime.ScalaRunTime._hashCode(this)
+    }
+    def productArity: Int = ${applyParams.length}
+    def productElement(i: Int) : Any = i match {
+      case ..$productElements
+      case _ => throw new java.lang.IndexOutOfBoundsException(i.toString())
+    }
+    }
   }""")
       }
       /**
@@ -330,16 +392,31 @@ q"""MinSize[W.`$min`.T]"""*/
        *   Encoder[argTpe](arg))) || HList with HNil + ::
        *   Decoder: HList > Decoder
        */
-      val repr = allAttributesList flatMap { lst =>
-        val hlist = lst.foldRight[universe.Tree](tq"HNil") { case ((_, _, c, _), acc) => tq"$c :: $acc" }
+      val repr = indexedAllAttributesList flatMap { lst =>
+        val hlist = lst.foldRight[universe.Tree](tq"HNil") {
+          case ((_, TermName(name), c, _), acc) =>
+            derivedAttributes.contains(name) match {
+              case true  => tq"Unit :: $acc"
+              case false => tq"$c :: $acc"
+            }
+        }
         Seq(q"""type Repr = $hlist""")
       }
-      def selfCodec: Option[(universe.Tree, universe.Tree)] = allAttributesOpt map { attrs =>
-        val encodeArgs = attrs.foldRight[universe.Tree](q"HNil") { case ((_, name, _, _), acc) => q"""c.$name :: $acc""" }
+      def selfCodec: Option[(universe.Tree, universe.Tree)] = indexedAllAttributesOpt map { attrs =>
+        val encodeArgs = attrs.foldRight[universe.Tree](q"HNil") {
+          case ((_, name @ TermName(nameStr), _, _), acc) =>
+            (derivedAttributes contains nameStr) match {
+              case true  => q"""() :: $acc"""
+              case false => q"""c.$name :: $acc"""
+            }
+        }
         //val unapplyArgs = allAttributes map { case (idx,name,_,_) => pq"""${TermName(s"_$idx")}""" }
         // 1. HList => Decode HList
         // 2. HList.
-        val decodeArgs = attrs map { case (idx, _, _, _) => q"r.at(${idx - 1})" }
+        val decodeArgs = for {
+          (idx, TermName(name), _, _) <- attrs
+          if !derivedAttributes.contains(name)
+        } yield q"r.at(${idx - 1})"
         //val unapplyDecode = decodeArgs.foldRight[universe.Tree](q"HNil") { case (c, acc) => pq"""$c :: $acc""" }
         val name = q"""${entity.name}"""
         (q"""ReprObjectEncoder[Repr].contramap{ (c:$tname) => $encodeArgs }""",
@@ -370,11 +447,7 @@ q"""MinSize[W.`$min`.T]"""*/
           case Some(ast.SupertypeRule(ast.SupertypeOneOf(UserDefinedEntities(subtypes @ _*)))) => Some(subtypeCodec(subtypes, selfCodec))
           case None => selfCodec
         }
-        allAttributesFlatten.flatMap({
-          case (_, _, tpt, _) => Seq(
-            q"""Encoder[$tpt]""",
-            q"""Decoder[$tpt]""")
-        }) ++ codecOpt.toList.flatMap({
+        codecOpt.toList.flatMap({
           case (encoder, decoder) => Seq(
             q"""implicit val encoder : Encoder[$tname] = $encoder""",
             q"""implicit val decoder : Decoder[$tname] = $decoder""")
@@ -385,6 +458,7 @@ q"""MinSize[W.`$min`.T]"""*/
         case false => applyDefinition
       }) ++ repr
       val objectDefinition = q"""object $compName { ..$objectBody }"""
+      ctx.popContext
       defaultImports ++ Seq(definition, objectDefinition).filter(_.nonEmpty)
     }
   }
@@ -406,17 +480,83 @@ q"""MinSize[W.`$min`.T]"""*/
     }
   }
 
-  implicit val expressionTransformer: Transformer[ast.Expression, universe.Tree] = Transformer.instance { implicit ctx =>
-    {
-      case ast.SingleOperation(lhs, op, rhs) => op match {
-        case ast.IN => q""" ${Transformer(rhs)}.contains(${Transformer(lhs)}) """
-        case _      => q""" null """
+  object Transformed {
+    def unapply[A, B](a: A)(implicit trsf: Transformer[A, B], ctx: TransformerContext): Option[B] = Some(trsf.transform(a))
+  }
+
+  object ConvertableFunction {
+    def unapply(f: ast.FunctionOrEntityConstructor)(implicit ctx: TransformerContext): Option[Option[Seq[ast.Expression]] => universe.Tree] = f match {
+      case ast.BuiltInFunction.Nvl =>
+        Some {
+          case Some(Seq(Transformed(opt), Transformed(default))) =>
+            q"""$opt.getOrElse($default)"""
+        }
+      case _ => None
+    }
+  }
+
+  implicit val expressionTransformer: Transformer[ast.RootExpression, universe.Tree] = Transformer.instance { implicit ctx =>
+    (_: ast.RootExpression) match {
+      case ast.SingleOperation(Transformed(lhs), op, Transformed(rhs)) => op match {
+        case ast.IN => q""" $rhs.contains($lhs) """
+        case _ =>
+          val operator = op match {
+            case ast.LT => "<"
+            case ast.GT => ">"
+            case ast.LE => "<="
+            case ast.GE => ">="
+            case ast.NE => "!="
+            case ast.EQ => "=="
+            case ast.TN => "ne"
+            case ast.TE => "eq"
+          }
+          q""" $lhs ${TermName(operator)} $rhs"""
       }
-      //case ast.MultipleOperation(lhs, subops) =>
-      case ast.UnaryOperation(ast.NotOp, expr) => q""" !${Transformer(expr)} """
+      case ast.MultipleOperation(Transformed(lhs), subops) =>
+        subops.foldLeft[universe.Tree](lhs) {
+          case (lhs, (op, Transformed(rhs))) =>
+            val operator = op match {
+              case ast.AdditionOp       => "+"
+              case ast.SubtractionOp    => "-"
+              case ast.MultiplicationOp => "*"
+              case ast.DivisionOp       => "/"
+              case ast.ModuloOp         => "%"
+              case ast.AndOp            => "&&"
+              case ast.OrElseOp         => "||"
+            }
+            q""" $lhs ${TermName(operator)} $rhs"""
+        }
+      case ast.AggregateInitializer(Transformed(items)) => q"""Seq(..$items)"""
+      case e: ast.BuiltInConstant                       => q"${TermName(e.toString())}"
+      case ast.QueryExpression(name, Transformed(source), condition) =>
+        ctx.pushContext
+        val vname = name.lowerFirst
+        ctx.register(vname, source)
+        val pat = pq"${TermName(vname)} @ _"
+        val cases = Seq(cq"$pat => ${Transformer(condition)}")
+        val r = q"query($source)({ case ..$cases  })"
+        ctx.popContext
+        r
+      case ast.QualifiedApply(ast.FunctionCallOrEntityConstructor(Transformed(qualifiable), Transformed(parameters)), qualifiers) =>
+        /*val origin = qualifiable match {
+          case e:ast.BuiltInConstant => TermName(e.toString())
+          case
+        }*/
+        val source = parameters.foldLeft(qualifiable)((acc, args) => q"""$acc(..$args)""")
+        qualifiers.foldLeft(source) { (source, qualifier) =>
+          qualifier match {
+            case ast.IndexQualifier(Transformed(index0), Transformed(index1Opt)) => index1Opt.foldLeft(q"""$source($index0)""")((acc, index1) => q"""$acc($index1)""")
+            case ast.AttributeQualifier(name)                                    => q"""$source.${TermName(name)}"""
+            case ast.GroupQualifier(name)                                        => q"""$source \ ${TermName(name)}"""
+          }
+        }
+      case ast.UnaryOperation(ast.NotOp, Transformed(expr))                  => q""" !$expr """
+      case ast.UnaryOperation(ast.NegativeOp, Transformed(expr))             => q""" -$expr """
+      case ast.FunctionCallOrEntityConstructor(ConvertableFunction(f), args) => f(args)
       case ast.FunctionCallOrEntityConstructor(called, args) =>
         val target = called match {
-          case f: ast.BuiltInFunction => q""" ${TermName(f.toString().lowerFirst)} """
+          case f: ast.BuiltInFunction =>
+            q""" ${TermName(f.toString().lowerFirst)} """
           case ast.UserDefinedFunctionOrEntityConstructor(name) =>
             q""" ${TermName(ctx.getExactName(name))} """
         }
@@ -426,28 +566,53 @@ q"""MinSize[W.`$min`.T]"""*/
           case None =>
             target
         }
-      case _ => q""" null """
+      case s: ast.Literal =>
+        s match {
+          case ast.LogicalLiteral(value) => value match {
+            case Some(true)  => q"""True"""
+            case Some(false) => q"""False"""
+            case None        => q"""Unknown"""
+          }
+          case ast.IntegerLiteral(value) => q""" ${value.toLong} """
+          case ast.RealLiteral(value)    => q""" ${value.toDouble} """
+          case ast.StringLiteral(value)  => q""" $value """
+          case ast.BinaryLiteral(value)  => q""" Binary() """
+        }
+      //case _ => q""" null """
     }
   }
 
-  implicit val logicalExpressionTransformer: Transformer[ast.LogicalExpression, universe.Tree] = Transformer.instance { implicit ctx =>
+  implicit val functionOrEntityConstructorTransformer: Transformer[ast.FunctionOrEntityConstructor, universe.Tree] = Transformer.instance { implicit ctx =>
+    {
+      case e: ast.FunctionCallOrEntityConstructor           => expressionTransformer.impl(e)
+      case ast.UserDefinedFunctionOrEntityConstructor(name) => q"""${TermName(ctx.getExactName(name))}"""
+    }
+  }
+
+  /*implicit val logicalExpressionTransformer: Transformer[ast.LogicalExpression, universe.Tree] = Transformer.instance { implicit ctx =>
     {
       case e: ast.Expression => expressionTransformer.transform(e)
     }
-  }
+  }*/
+
+  /*  implicit val numericExpressionTransformer: Transformer[ast.NumericExpression, universe.Tree]=Transformer.instance {implicit ctx =>
+    {
+      case e:ast.Expression => expressionTransformer.transform(e)
+    }
+  }*/
 
   implicit val statementTransformer: Transformer[ast.Statement, universe.Tree] = Transformer.instance { implicit ctx =>
     {
-      case ast.IfStatement(condition, ifPass, ifFailed) =>
-        q"""if(${Transformer(condition)}) {
-          ..${ifPass.map(Transformer(_))}
+      case ast.IfStatement(Transformed(condition), Transformed(ifPass), Transformed(ifFailed)) =>
+        q"""if($condition) {
+          ..$ifPass
         }else{
-          ..${ifFailed.map(Transformer(_))}
+          ..$ifFailed
         }"""
       case ast.ReturnStatement(expr) =>
         expr match {
-          case None       => q"""return """
-          case Some(expr) => q"""return ${Transformer(expr)}"""
+          case None                    => q"""return """
+          case Some(Transformed(expr)) => q"""return $expr"""
         }
       case _ =>
         q""" null  """
@@ -483,9 +648,8 @@ q"""MinSize[W.`$min`.T]"""*/
         TypeDef(Modifiers(), TypeName(name), Nil, q"")
       })
       val paramss = function.parameters.map({
-        case ast.Parameter(name, argTpe) =>
+        case ast.Parameter(name, Transformed(targetTpe)) =>
           val argName = TermName(name.lowerFirst)
-          val targetTpe = Transformer(argTpe)
           ctx.register(name.lowerFirst, targetTpe)
           q"""val $argName : $targetTpe"""
       })
@@ -494,7 +658,7 @@ q"""MinSize[W.`$min`.T]"""*/
       val body = Seq(q"""null.asInstanceOf[$tpt]""")
       ctx.popContext
       defaultImports :+
-        q"""object $name {
+        q"""object $name extends ExpressFunction {
   def apply[..$genericTpts](..$paramss): $tpt = {
     ..$head
     ..$body
@@ -528,7 +692,7 @@ q"""MinSize[W.`$min`.T]"""*/
 
         val otherImports = Seq(q"""import shapeless.{ Coproduct, :+:, CNil }""")
 
-        val packageObjectDefinition = q"""package object ${TermName(name)} {
+        val packageObjectDefinition = q"""package object ${TermName(name)} extends CommonIfcBase {
   def registerEntity[A](implicit encoder: Encoder[A], decoder: Decoder[A]) : Unit = {
   }
   ..$types
@@ -582,8 +746,8 @@ q"""MinSize[W.`$min`.T]"""*/
           Seq(
             q"""trait $name""",
             q"""object $cname {
-  implicit val encoder: Encoder[$name] = null.asInstanceOf[Encoder[$name]]
-  implicit val decoder: Decoder[$name] = null.asInstanceOf[Decoder[$name]]
+  implicit val encoder: Encoder[$name] = Encoder[$tpt].asInstanceOf[Encoder[$name]]
+  implicit val decoder: Decoder[$name] = Decoder[$tpt].asInstanceOf[Decoder[$name]]
 }""")
         case ast.EnumerationType(extensible, items) =>
           val (enumDefs, decodeCases, encodeCases) = items match {
@@ -598,7 +762,6 @@ q"""MinSize[W.`$min`.T]"""*/
             case _ => throw new NotImplementedError(s"ENUMERATION BASED ON not supported (${tpe.name})")
           }
           val tpt = tq"""Enumeration"""
-          q"""type $name = $tpt"""
           val clsDefs: Seq[universe.Tree] = Nil
           val enum = q"""object $cname {
 ..$enumDefs
@@ -610,10 +773,10 @@ q"""MinSize[W.`$min`.T]"""*/
   }
 }"""
           extensible match {
-            case true => Seq(q"""abstract class $name extends scala.Product with scala.Serializable {
+            case true => Seq(q"""abstract class $name extends ExpressEnumeration {
 ..$clsDefs
 }""", enum)
-            case false => Seq(q"""sealed abstract class $name extends scala.Product with scala.Serializable {
+            case false => Seq(q"""sealed abstract class $name extends ExpressEnumeration{
 ..$clsDefs 
 }""", enum)
           }
@@ -624,7 +787,7 @@ q"""MinSize[W.`$min`.T]"""*/
         case e: ast.ConcreteType =>
           val tpt = Transformer(e)
           val cname = TermName(tpe.name)
-          val parents = context.inheritingTraitsOf(tpe.name).map(TypeName(_))
+          val parents = context.inheritingTraitsOf(tpe.name).map(TypeName(_)) :+ TermName("ExpressType")
           // class A(val t: Double)
           // class B extends A
           //Seq(q"""class $name(val value: $tpt) extends ..$parents""")
@@ -643,7 +806,9 @@ q"""MinSize[W.`$min`.T]"""*/
             q"""object $cname {
 ..$whereRules
 implicit val encoder : Encoder[$name] = Encoder[$target].contramap[$name](_.value)
-implicit val decoder : Decoder[$name] = Decoder[$target].map($cname(_))}""")
+implicit val decoder : Decoder[$name] = Decoder[$target].map($cname(_))
+implicit def ${TermName(s"to${tpe.name}")}(value: $target): $name = $cname(value)
+implicit def ${TermName(s"from${tpe.name}")}(value: $name): $target = value.value}""")
       }
     }
   }

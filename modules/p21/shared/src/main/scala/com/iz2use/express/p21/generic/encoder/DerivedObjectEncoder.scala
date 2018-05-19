@@ -1,13 +1,12 @@
 package com.iz2use.express.p21.generic.encoder
 
 import cats.Contravariant
-import shapeless.{ HList, Lazy, HNil, :: }
+import shapeless.{ HList, Lazy, HNil, ::, CNil, Coproduct, :+:, Inl, Inr }
 import shapeless.ops.function.FnFromProduct
 import shapeless.ops.record.RemoveAll
 import shapeless.Generic
 import com.iz2use.express.p21._
 import com.iz2use.express.syntax._
-
 
 abstract class DerivedObjectEncoder[A] extends ObjectEncoder[A]
 

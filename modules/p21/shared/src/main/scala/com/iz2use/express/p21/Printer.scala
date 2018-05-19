@@ -44,6 +44,7 @@ final object Printer {
       writer.append(value.toString)
     }
     final def onUnknown: Unit = writer.append(".U.")
+    final def onEmpty: Unit = {}
 
     final def onNumber(number: StepNumber): Unit = writer.append(number.toString)
 
