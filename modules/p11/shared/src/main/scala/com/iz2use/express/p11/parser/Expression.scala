@@ -99,6 +99,7 @@ trait Expression extends Literal {
   }))
 
   private val qualifiable_factor: P[ast.QualifiableFactor] = P((
+    built_in_constant |
     function_call |
     constant_factor.map({
       case c: ast.BuiltInConstant        => c

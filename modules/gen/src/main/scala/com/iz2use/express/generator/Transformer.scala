@@ -179,7 +179,7 @@ q"""MinSize[W.`$min`.T]"""*/
       case ast.GenericType(Some(label)) =>
         Ident(TermName(label))
       case ast.IntegerType =>
-        tq"""Int"""
+        tq"""Long"""
       case ast.ListType(boundsOpt, unique, Transformed(tpt)) =>
         composeWithBounds(tq"""List[$tpt]""", boundsOpt)
       case ast.LogicalType =>
@@ -527,27 +527,40 @@ q"""MinSize[W.`$min`.T]"""*/
             q""" $lhs ${TermName(operator)} $rhs"""
         }
       case ast.AggregateInitializer(Transformed(items)) => q"""Seq(..$items)"""
-      case e: ast.BuiltInConstant                       => q"${TermName(e.toString())}"
+      case e: ast.BuiltInConstant => e match {
+        case ast.BuiltInConstant.Self    => q"""this"""
+        case ast.BuiltInConstant.PI      => q"""Math.PI"""
+        case ast.BuiltInConstant.E       => q"""Math.E"""
+        case ast.BuiltInConstant.Unknown => q"""unknown"""
+      }
+      /**
+       * If {SizeOf/LoIndex/HiIndex/...}(Query(source)(predicate)) =>
+       * source.{count/lowestIndex/highestIndex}(predicate)  
+       */
       case ast.QueryExpression(name, Transformed(source), condition) =>
         ctx.pushContext
         val vname = name.lowerFirst
         ctx.register(vname, source)
-        val pat = pq"${TermName(vname)} @ _"
-        val cases = Seq(cq"$pat => ${Transformer(condition)}")
-        val r = q"query($source)({ case ..$cases  })"
+        val tpt = tq""
+        val param = q"val ${TermName(vname)} : $tpt"
+        val f = q"($param => ${Transformer(condition)})"
+        val r = q"query($source).apply($f)"
         ctx.popContext
         r
-      case ast.QualifiedApply(ast.FunctionCallOrEntityConstructor(Transformed(qualifiable), Transformed(parameters)), qualifiers) =>
+      case ast.QualifiedApply(Transformed(qualifiable), qualifiers) =>
         /*val origin = qualifiable match {
           case e:ast.BuiltInConstant => TermName(e.toString())
           case
         }*/
-        val source = parameters.foldLeft(qualifiable)((acc, args) => q"""$acc(..$args)""")
-        qualifiers.foldLeft(source) { (source, qualifier) =>
+        //val source = parameters.foldLeft(qualifiable)((acc, args) => q"""$acc(..$args)""")
+        qualifiers.foldLeft(qualifiable) { (source, qualifier) =>
           qualifier match {
             case ast.IndexQualifier(Transformed(index0), Transformed(index1Opt)) => index1Opt.foldLeft(q"""$source($index0)""")((acc, index1) => q"""$acc($index1)""")
-            case ast.AttributeQualifier(name)                                    => q"""$source.${TermName(name)}"""
-            case ast.GroupQualifier(name)                                        => q"""$source \ ${TermName(name)}"""
+            case ast.AttributeQualifier(name)                                    => q"""$source.${TermName(name.lowerFirst)}"""
+            case ast.GroupQualifier(name)                                        => source match {
+              case q"""$z.this""" => q"""${TypeName(name)}.this"""
+              case _ => q"""$source \ ${TermName(name)}"""
+            }
           }
         }
       case ast.UnaryOperation(ast.NotOp, Transformed(expr))                  => q""" !$expr """
@@ -800,6 +813,11 @@ q"""MinSize[W.`$min`.T]"""*/
               val refined = rest.foldLeft(tq"""$one And $two""")((acc, c) => tq"""$acc And $c""")
               tq"""$tpt Refined $refined"""
           }
+          
+          val (underlying, fromUnderlying, toUnderlying) = target match {
+            case tq"Refined[..$targs]" => (targs.head, q"""$cname(value)""", q"""value.value.value""")
+            case v                     => (v, q"""$cname(value)""", q"""value.value""")
+          }
           Seq(
             //q"""type $name = $target""",
             q"""case class $name(value: $target) extends ..$parents""",
@@ -807,8 +825,8 @@ q"""MinSize[W.`$min`.T]"""*/
 ..$whereRules
 implicit val encoder : Encoder[$name] = Encoder[$target].contramap[$name](_.value)
 implicit val decoder : Decoder[$name] = Decoder[$target].map($cname(_))
-implicit def ${TermName(s"to${tpe.name}")}(value: $target): $name = $cname(value)
-implicit def ${TermName(s"from${tpe.name}")}(value: $name): $target = value.value}""")
+implicit def ${TermName(s"to${tpe.name}")}(value: $underlying): $name = $fromUnderlying
+implicit def ${TermName(s"from${tpe.name}")}(value: $name): $underlying = $toUnderlying}""")
       }
     }
   }
