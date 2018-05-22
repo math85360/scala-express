@@ -39,8 +39,8 @@ object WallTest extends TestSuite {
         else Left("too long !")
       }
     }*/
-    val project = IfcProject(IfcGloballyUniqueId.next + "test", name           = IfcLabel("IfcProject"),
-                                                                unitsInContext = IfcUnitAssignment(
+    val project = IfcProject(IfcGloballyUniqueId.next, name = IfcLabel("IfcProject"),
+                             unitsInContext = IfcUnitAssignment(
         Set[IfcUnit](
           lengthUnit)))
     'TestIfcProjectEncoder{
@@ -73,7 +73,7 @@ object WallTest extends TestSuite {
       }
     }
     val masonry = IfcMaterial("Masonry")
-    val layerFinish = IfcMaterialLayer(masonryFinish, IfcNonNegativeLengthMeasure(110.0), name = IfcLabel("Finish"))
+    val layerFinish = IfcMaterialLayer(masonryFinish, IfcLengthMeasure(110.0), name = IfcLabel("Finish"))
     'TestIfcMaterialLayer{
       Encoder[Option[RefTo[IfcMaterial]]]
       Encoder[IfcNonNegativeLengthMeasure]
@@ -90,11 +90,11 @@ object WallTest extends TestSuite {
         case valid() =>
       }
     }
-    val airInfiltrationBarrier = IfcMaterialLayer(None, IfcNonNegativeLengthMeasure(50.0), name = IfcLabel("Air Infiltration Barrier"), isVentilated = True)
-    val structure = IfcMaterialLayer(masonry, IfcNonNegativeLengthMeasure(110.0), name = IfcLabel("Core"))
+    val airInfiltrationBarrier = IfcMaterialLayer(None, IfcLengthMeasure(50.0), name = IfcLabel("Air Infiltration Barrier"), isVentilated = IfcLogical(True))
+    val structure = IfcMaterialLayer(masonry, IfcLengthMeasure(110.0), name = IfcLabel("Core"))
     val name = "Double Brick - 270"
+    val materialLayerSet = IfcMaterialLayerSet(List[IfcMaterialLayer](layerFinish, airInfiltrationBarrier, structure), IfcLabel(name))
     val materialLayerSetUsage = IfcMaterialLayerSetUsage(materialLayerSet, IfcLayerSetDirectionEnum.AXIS2, IfcDirectionSenseEnum.POSITIVE, 0)
-    val materialLayerSet = IfcMaterialLayerSet(List[IfcMaterialLayer](layerFinish, airInfiltrationBarrier, structure), name)
     val wallType = IfcWallType(IfcGloballyUniqueId.next, name = IfcLabel(name), predefinedType = IfcWallTypeEnum.NOTDEFINED)
     val wallStandardCase = IfcWallStandardCase(
       IfcGloballyUniqueId.next,

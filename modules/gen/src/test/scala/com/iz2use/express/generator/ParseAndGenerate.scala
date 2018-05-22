@@ -38,10 +38,19 @@ def apply[I <: IfcVectorOrDirection](arg: Option[I]): I = null.asInstanceOf[I]
               }
             }
             input.map(transformer.transform)
+          case "IfcGeometricRepresentationSubContext" =>
+            import ScalaDefinition.universe._
+            object transformer extends Transformer {
+              override def transform(tree: Tree): Tree = tree match {
+                case q"""lazy val trueNorth: $tpt = $value""" => q"""lazy val trueNorth: Some[$tpt] = Some($value)"""
+                case q"""lazy val precision: $tpt = $value""" => q"""lazy val precision: Some[$tpt] = Some($value)"""
+                case _                                        => super.transform(tree)
+              }
+            }
+            input.map(transformer.transform)
           case _ => input
         }
-      }
-    )
+      })
     ctx.withPackage("com.iz2use.express.ifc") {
       for ((filename, pkg, tree) <- Transformer(schema) if tree.nonEmpty) {
         val code = tree.map(showCode(_)).mkString("\n")
@@ -56,21 +65,21 @@ def apply[I <: IfcVectorOrDirection](arg: Option[I]): I = null.asInstanceOf[I]
       }
     }
     /**
-     * items foreach { e =>
-     * val transformed = showCode(Transformer(e))
-     * val name = e match {
-     * case ast.EntityDeclaration(name, _, _, _, _, _, _, _) => name
-     * case ast.TypeDeclaration(name, _, _)                  => name
-     * case ast.FunctionDeclaration(name, _, _, _, _)        => name
-     * case ast.RuleDeclaration(name, _, _, _, _)            => name
-     * }
-     * val file = new File(s"target/$name.scala")
-     * val pw = new PrintWriter(file)
-     * pw.write(transformed)
-     * pw.close
-     * assert(transformed != "")
-     * }
-     */
+      * items foreach { e =>
+      * val transformed = showCode(Transformer(e))
+      * val name = e match {
+      * case ast.EntityDeclaration(name, _, _, _, _, _, _, _) => name
+      * case ast.TypeDeclaration(name, _, _)                  => name
+      * case ast.FunctionDeclaration(name, _, _, _, _)        => name
+      * case ast.RuleDeclaration(name, _, _, _, _)            => name
+      * }
+      * val file = new File(s"target/$name.scala")
+      * val pw = new PrintWriter(file)
+      * pw.write(transformed)
+      * pw.close
+      * assert(transformed != "")
+      * }
+      */
     /*'Types{
       items collect {
         case e: ast.TypeDeclaration =>
