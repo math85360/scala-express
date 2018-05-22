@@ -11,8 +11,8 @@ import com.iz2use.express.syntax._
 abstract class ReprDecoder[A] extends Decoder[A]
 
 final object ReprDecoder {
-  def apply[A](implicit decoder: ReprDecoder[A]):ReprDecoder[A] = decoder
-  
+  def apply[A](implicit decoder: ReprDecoder[A]): ReprDecoder[A] = decoder
+
   implicit final val decodeHNil: ReprDecoder[HNil] = new ReprDecoder[HNil] {
     def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[HNil] = Right(HNil)
   }

@@ -11,7 +11,7 @@ package object syntax {
     implicit val ordering = Ordering.by((r: RefTo[_]) => r.id)
     implicit def materialize[A](in: RefTo[A]) /*(implicit db:DatabaseIfc)*/ : A = null.asInstanceOf[A]
   }
-  sealed trait Logical
+  sealed trait Logical extends ExpressType
   object Logical {
     case object True extends Logical
     case object False extends Logical
@@ -52,11 +52,14 @@ package object syntax {
   implicit def fromRefinedSet[T, P](in: Refined[Set[T], P]): Set[T] =
     in.value
   implicit def fromOptionBoolean(in: Option[Boolean]): Boolean = in.getOrElse(false)
-  implicit def fromOptionEntity[T <: ExpressEntity](in: Option[T]): T = in.get
+  implicit def fromOptionList[T](in: Option[List[T]]): List[T] = in.getOrElse(Nil)
+  implicit def fromOptionEntity[T <: ExpressRoot](in: Option[T]): T = in.get
+  implicit def toOptionEntity[T <: ExpressRoot](in: T): Option[T] = Option(in)
+  implicit def toOptionEntity[T <: ExpressRoot, S](in: S)(implicit f: S => T): Option[T] = Option(f(in))
   //implicit def fromOption[T](in: Option[T]): T
 
   /*object nvl {
-    def apply[C](a: Option[C], b: C): C = a.getOrElse(b)
+    def apply[C](a: C, b: C): C = if (a == null) b else a
   }*/
 
   /*implicit def withRefined[C <: ExpressType, T, P](in: T)(implicit

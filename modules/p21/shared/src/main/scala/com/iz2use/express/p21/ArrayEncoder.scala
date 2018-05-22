@@ -34,5 +34,5 @@ final object ArrayEncoder {
     exported: Exported[ArrayEncoder[A]]
   ): ArrayEncoder[A] = exported.instance
 
-} 
-*/
+}
+*/ 

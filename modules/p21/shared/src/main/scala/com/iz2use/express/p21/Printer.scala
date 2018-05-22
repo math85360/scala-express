@@ -4,7 +4,7 @@ import scala.annotation.switch
 import java.lang.StringBuilder
 
 final case class Printer(
-  reuseWriters: Boolean = false) {
+    reuseWriters: Boolean = false) {
   private[this] final class StringBuilderFolder(writer: StringBuilder) extends Printer.PrintingFolder(writer) {
 
     //final def onNumber(value :StepNumber): Unit = value.appendToStringBuilder(writer)
@@ -31,10 +31,10 @@ final case class Printer(
 
 final object Printer {
   private[p21] abstract class PrintingFolder(
-    private[p21] val writer: Appendable) extends Step.Folder[Unit] {
+      private[p21] val writer: Appendable) extends Step.Folder[Unit] {
     final def onBoolean(value: Boolean): Unit = writer.append(if (value) ".T." else ".F.")
     final def onNull: Unit = writer.append("$")
-    final def onLiteral(value: String) : Unit = {
+    final def onLiteral(value: String): Unit = {
       writer.append('.')
       writer.append(value)
       writer.append('.')

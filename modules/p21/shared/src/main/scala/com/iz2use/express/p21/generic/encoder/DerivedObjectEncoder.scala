@@ -16,7 +16,7 @@ final object DerivedObjectEncoder {
   }
 
   implicit def deriveEncoder[A, R](implicit
-    gen: Generic.Aux[A, R],
+      gen: Generic.Aux[A, R],
                                    encode: Lazy[ReprObjectEncoder[R]]): DerivedObjectEncoder[A] = new DerivedObjectEncoder[A] {
     final def encodeObject(a: A)(implicit strictness: EncoderStrictness): StepObject = encode.value.encodeObject(gen.to(a))
   }

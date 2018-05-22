@@ -118,7 +118,7 @@ final object Encoder extends MidPriorityImplicitGenericEncoder {
 }
 trait MidPriorityImplicitGenericEncoder extends LowPriorityImplicitGenericEncoder {
   implicit final def encodeRefined[E, T, P, F[_, _]](implicit
-    underlying: Encoder[T],
+      underlying: Encoder[T],
                                                      v:           Validate[T, P],
                                                      refType:     RefType[F],
                                                      recoverable: Recoverable[E, T, P, F]): Encoder[F[T, P]] =
@@ -133,9 +133,9 @@ trait MidPriorityImplicitGenericEncoder extends LowPriorityImplicitGenericEncode
 trait LowPriorityImplicitGenericEncoder extends CoproductEncoder {
 
   implicit def genericObjectEncoder[A, H <: HList](
-    implicit
-    generic:  Generic.Aux[A, H],
-    hEncoder: Lazy[ObjectEncoder[H]]): Encoder[A] =
+      implicit
+      generic:  Generic.Aux[A, H],
+      hEncoder: Lazy[ObjectEncoder[H]]): Encoder[A] =
     new Encoder[A] {
       def apply(value: A)(implicit strictness: EncoderStrictness): StepObject = {
         hEncoder.value.encodeObject(generic.to(value))
@@ -167,7 +167,7 @@ trait CoproductEncoder {
     }
 
   implicit final def encodeCCons[L, R <: Coproduct](implicit
-    encodeL: Encoder[L],
+      encodeL: Encoder[L],
                                                     encodeR: Encoder[R]): Encoder[L :+: R] = new Encoder[L :+: R] {
     def apply(a: L :+: R)(implicit strictness: EncoderStrictness): Step = a match {
       case Inl(l) => encodeL(l)

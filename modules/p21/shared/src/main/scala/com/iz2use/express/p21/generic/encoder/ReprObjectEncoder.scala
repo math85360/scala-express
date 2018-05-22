@@ -20,9 +20,9 @@ final object ReprObjectEncoder {
   }
 
   implicit def hlistObjectEncoder[H, T <: HList](
-    implicit
-    hEncoder: Encoder[H],
-    tEncoder: Lazy[ReprObjectEncoder[T]]): ReprObjectEncoder[H :: T] = new ReprObjectEncoder[H :: T] { hlist =>
+      implicit
+      hEncoder: Encoder[H],
+      tEncoder: Lazy[ReprObjectEncoder[T]]): ReprObjectEncoder[H :: T] = new ReprObjectEncoder[H :: T] { hlist =>
     final def encodeObject(hlist: H :: T)(implicit strictness: EncoderStrictness): StepObject = {
       val head = hEncoder.apply(hlist.head)
       val tail = tEncoder.value.encodeObject(hlist.tail)

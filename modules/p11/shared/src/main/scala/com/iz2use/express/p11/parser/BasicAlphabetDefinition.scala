@@ -65,7 +65,7 @@ object BasicAlphabetDefinition {
   private[parser] val tail_remark = P("--" ~ remark_tag.? ~ ("\u0007" | " " | "\b" | "\t" | "\n" | "\u000b" | "\f" | "\r").rep ~ "\n")
   private[parser] val space = P(CharsWhileIn(" \t\n\f\r", 1))
   private[parser] val comment = P("(*" ~/ (!"*)" ~ AnyChar).rep ~ "*)" ~/)
-  private[parser] val spaceOrComments : P[Unit]= P((space | comment).rep(1))
+  private[parser] val spaceOrComments: P[Unit] = P((space | comment).rep(1))
   private[parser] val spaceOrCommentsOpt: P[Unit] = P(spaceOrComments.?.map(_ => ()))
 
 }

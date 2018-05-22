@@ -11,9 +11,9 @@ abstract class HCursor(lastCursor: HCursor, lastOp: CursorOp) extends ACursor(la
       new ObjectCursor(values, 0, this, false)(this, CursorOp.DownObject)
     case _ => fail(CursorOp.DownObject)
   }*/
-  
+
   final def succeeded: Boolean = true
-  
+
   final def downArray: ACursor = value match {
     case StepArray(values) =>
       new ArrayCursor(values, 0, this, false)(this, CursorOp.DownArray)

@@ -12,12 +12,7 @@ package ast {
     implicit def fromA[A](value: A): |[A, PipeNil] = |(value, PipeNil)
     implicit def fromB[B <: Alternative](value: B): |[PipeNil, B] = |(PipeNil, value)
   }
-  
-  
-  
-  
 
-  
   sealed trait Statement
   case class AliasStatement(name: String, source: String, path: Seq[ast.Qualifier], body: Seq[Statement]) extends Statement
   case class AssignmentStatement(target: String, path: Seq[ast.Qualifier], expression: Expression) extends Statement
@@ -34,11 +29,11 @@ package ast {
   case object SkipStatement extends Statement
   //case class AbstractEntityDeclaration()
   sealed trait EntityBody
-  
+
   sealed trait Attribute
-  case class ExplicitAttribute(names: AttributeName, optional: Boolean, tpe: ParameterType) extends Attribute 
+  case class ExplicitAttribute(names: AttributeName, optional: Boolean, tpe: ParameterType) extends Attribute
   case class DerivedAttribute(names: AttributeName, tpe: ParameterType, value: Expression) extends Attribute
-  case class InverseAttribute(names: AttributeName, tpe: Option[InverseAggregateType], source: String, entity: Option[String], attribute: String) extends Attribute 
+  case class InverseAttribute(names: AttributeName, tpe: Option[InverseAggregateType], source: String, entity: Option[String], attribute: String) extends Attribute
   case class UniqueClause(name: Option[String], source: Seq[UniqueSource])
   sealed trait UniqueSource
   case class ReferencedAttribute(attribute: String) extends UniqueSource
@@ -47,9 +42,7 @@ package ast {
   case class RedeclaredAttribute(source: QualifiedAttribute, renamed: Option[String]) extends AttributeName
   case class InverseAggregateType(unique: Boolean, bounds: Option[Bounds])
   case class QualifiedAttribute(group: String, attribute: String) extends UniqueSource
-  
-  
-  
+
   //type ResourceRef =  ConstantRef <: BaseRef
   //case class Ref(value: Id)
   //case class Id(name: String)

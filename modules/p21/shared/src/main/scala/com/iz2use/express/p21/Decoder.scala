@@ -181,7 +181,7 @@ final object Decoder extends MidPriorityDecoder {
   final def deriveDecoder[A](implicit decoder: Lazy[generic.decoder.DerivedDecoder[A]]): Decoder[A] = decoder.value
 
   implicit final def decodeCanBuildFrom[A, C[_]](implicit
-    d: Decoder[A],
+      d: Decoder[A],
                                                  cbf: CanBuildFrom[Nothing, A, C[A]]): Decoder[C[A]] = new SeqDecoder[A, C](d, cbf)
 
   implicit final def decodeSet[A: Decoder]: Decoder[Set[A]] =
@@ -241,11 +241,11 @@ final object Decoder extends MidPriorityDecoder {
 
 trait MidPriorityDecoder extends CoproductDecoder {
   implicit final def decodeRefined[T, P, F[_, _]](
-    implicit
-    underlying:  Decoder[T],
-    v:           Validate[T, P],
-    refType:     RefType[F],
-    recoverable: Recoverable[_, T, P, F]): Decoder[F[T, P]] = new Decoder[F[T, P]] {
+      implicit
+      underlying:  Decoder[T],
+      v:           Validate[T, P],
+      refType:     RefType[F],
+      recoverable: Recoverable[_, T, P, F]): Decoder[F[T, P]] = new Decoder[F[T, P]] {
     def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[F[T, P]] = underlying(c) match {
       case Right(a) =>
         strictness(a)(v, refType, recoverable) match {
@@ -264,7 +264,7 @@ trait CoproductDecoder {
   }
 
   implicit final def decodeCCons[L, R <: Coproduct](implicit
-    decodeL: Decoder[L],
+      decodeL: Decoder[L],
                                                     decodeR: Decoder[R]): Decoder[L :+: R] =
     decodeL.map(Inl(_)).or(decodeR.map(Inr(_)))
 }

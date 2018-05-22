@@ -22,7 +22,7 @@ object BuiltInConstant {
   case object E extends BuiltInConstant
   case object PI extends BuiltInConstant
   case object Self extends BuiltInConstant
-  case object Unknown extends BuiltInConstant
+  case object Indeterminate extends BuiltInConstant
 }
 sealed trait BuiltInFunction extends FunctionOrEntityConstructor
 object BuiltInFunction {

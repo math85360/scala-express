@@ -29,7 +29,7 @@ trait RfcCommons extends EnhancedBasicAlphabetDefinition {
     UriPathEmpty)
   private final val UriQuery = P("?" ~ Fail)
   private final val UriScheme = P(UpperOrLower ~ (UpperOrLowerOrDigits | "+" | "-" | ".").rep)
-  private[parser]final val UniversalResourceIdentifier = P(UriScheme ~ ":" ~ UriHierPart ~ UriQuery.? ~ UriFragmentIdentifier.?)
+  private[parser] final val UniversalResourceIdentifier = P(UriScheme ~ ":" ~ UriHierPart ~ UriQuery.? ~ UriFragmentIdentifier.?)
   private final val Base64Char = UpperChar ++ LowerChar ++ DigitChar ++ "+/="
   private[parser] final val Base64 = P(CharsWhileIn(Base64Char, 1))
 }

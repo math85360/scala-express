@@ -4,7 +4,7 @@ import eu.timepit.refined.api._
 
 trait Strictness {
   def apply[E, T, P, F[_, _]](in: T)(implicit
-    v: Validate[T, P],
+      v: Validate[T, P],
                                      refType:     RefType[F],
                                      recoverable: Recoverable[E, T, P, F]): Strictness.Result[F[T, P]]
 }
@@ -18,7 +18,7 @@ object Strictness {
 
   sealed trait Flexible extends Strictness {
     override def apply[E, T, P, F[_, _]](in: T)(implicit
-      v: Validate[T, P],
+        v: Validate[T, P],
                                                 refType:     RefType[F],
                                                 recoverable: Recoverable[E, T, P, F]): Strictness.Result[F[T, P]] =
       Right(refType.unsafeWrap(in))
@@ -26,7 +26,7 @@ object Strictness {
 
   sealed trait Strict extends Strictness {
     override def apply[E, T, P, F[_, _]](in: T)(implicit
-      v: Validate[T, P],
+        v: Validate[T, P],
                                                 refType:     RefType[F],
                                                 recoverable: Recoverable[E, T, P, F]): Strictness.Result[F[T, P]] =
       refType.refine[P].apply(in)
@@ -34,7 +34,7 @@ object Strictness {
 
   sealed trait StrictOrConvert extends Strictness {
     override def apply[E, T, P, F[_, _]](in: T)(implicit
-      v: Validate[T, P],
+        v: Validate[T, P],
                                                 refType:     RefType[F],
                                                 recoverable: Recoverable[E, T, P, F]): Strictness.Result[F[T, P]] =
       refType.refine[P].apply(in) match {
@@ -55,8 +55,8 @@ object Strictness {
 }
 
 /**
- * Where E is Entity and T the Type, because we don't want a bad
- */
+  * Where E is Entity and T the Type, because we don't want a bad
+  */
 trait Recoverable[E, T, P, F[_, _]] {
   def recover(in: T): Strictness.Result[F[T, P]]
 }

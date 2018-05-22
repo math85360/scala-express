@@ -135,50 +135,50 @@ object Step {
   }
 }
 
-  // Make difference between Express, Step, Ifc
-  //
-  /**
-   * In Express, we've these types :
-   * - Literals : Logical, Boolean, Binary, String, Number, Integer, Real
-   * - Enumerated as Literals
-   * - Select Data Type
-   * - Defined Data Type
-   * - Entity Data Type
-   * - Aggregations : Set, Bag, List, Array
-   * See WR1 as Refined conditions ?
-   */
+// Make difference between Express, Step, Ifc
+//
+/**
+  * In Express, we've these types :
+  * - Literals : Logical, Boolean, Binary, String, Number, Integer, Real
+  * - Enumerated as Literals
+  * - Select Data Type
+  * - Defined Data Type
+  * - Entity Data Type
+  * - Aggregations : Set, Bag, List, Array
+  * See WR1 as Refined conditions ?
+  */
 
-  /**
-   * TYPE A = ENUMERATION OF (
-   * X,
-   * Y,
-   * Z);
-   * END_TYPE;
-   */
+/**
+  * TYPE A = ENUMERATION OF (
+  * X,
+  * Y,
+  * Z);
+  * END_TYPE;
+  */
 
-  /**
-   * ENTITY A SUBTYPE OF Z;
-   *   arg : SET [1:?] OF B;
-   *   arg : INTEGER;
-   *
-   * WHERE
-   *   WR01 : Validation(arg);
-   * END_ENTITY;
-   */
+/**
+  * ENTITY A SUBTYPE OF Z;
+  *   arg : SET [1:?] OF B;
+  *   arg : INTEGER;
+  *
+  * WHERE
+  *   WR01 : Validation(arg);
+  * END_ENTITY;
+  */
 
-  /**
-   * ENTITY A ABSTRACT SUPERTYPE OF (ONEOF(X,Y));
-   * END_ENTITY;
-   */
+/**
+  * ENTITY A ABSTRACT SUPERTYPE OF (ONEOF(X,Y));
+  * END_ENTITY;
+  */
 
-  /**
-   * FUNCTION A (arg: B) : R;
-   * 'code'
-   * END_FUNCTION;
-   */
+/**
+  * FUNCTION A (arg: B) : R;
+  * 'code'
+  * END_FUNCTION;
+  */
 
-  /**
-   * We can use directly STEP schema without specialization of types,
-   * we juste open STEP schema and use it
-   * Or generate all scala classes from a STEP schema
-   */
+/**
+  * We can use directly STEP schema without specialization of types,
+  * we juste open STEP schema and use it
+  * Or generate all scala classes from a STEP schema
+  */

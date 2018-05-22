@@ -9,7 +9,7 @@ import java.util.UUID
 
 trait CommonIfcBase {
   private[this] val base64 = "ABCDEFGIHJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$"
-    private[this] val base64mask = 0x3F
+  private[this] val base64mask = 0x3F
   implicit class RichIfcGloballyUniqueId(root: IfcGloballyUniqueId.type) {
     def next(implicit db: DatabaseIfc): IfcGloballyUniqueId = {
       def c(l: Long, pos: Int): Char = {
@@ -31,19 +31,19 @@ trait CommonIfcBase {
     db.insert(a)
 
   implicit def toRefined[A, P](a: A)(
-    implicit
-    v: Validate[A, P]): A Refined P =
+      implicit
+      v: Validate[A, P]): A Refined P =
     refineV[P].apply(a) match {
-    case Right(v) => v
-    case Left(e) => throw new Error(s"Not refinable : $a")
-  }
+      case Right(v) => v
+      case Left(e)  => throw new Error(s"Not refinable : $a")
+    }
 
   implicit def toOptionRefined[A, P](a: A)(
-    implicit
-    v: Validate[A, P]): Option[A Refined P] =
+      implicit
+      v: Validate[A, P]): Option[A Refined P] =
     Some(toRefined(a))
 
   implicit def toOption[A](a: A): Option[A] = Some(a)
 
-  implicit def toOptionRefTo[A<: ExpressEntity](a: A)(implicit db: DatabaseIfc): Option[RefTo[A]] = Some(toRef(a))
+  implicit def toOptionRefTo[A <: ExpressEntity](a: A)(implicit db: DatabaseIfc): Option[RefTo[A]] = Some(toRef(a))
 }

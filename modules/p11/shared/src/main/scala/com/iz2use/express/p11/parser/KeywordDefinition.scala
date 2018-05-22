@@ -5,12 +5,12 @@ import fastparse.all._
 
 object MkKeyword {
   import BasicAlphabetDefinition._
-  def apply(keyword: String)(implicit ev: sourcecode.Name) = 
-    P((IgnoreCase(keyword)~ !simple_id_tail).opaque(keyword))
+  def apply(keyword: String)(implicit ev: sourcecode.Name) =
+    P((IgnoreCase(keyword) ~ !simple_id_tail).opaque(keyword))
 }
 trait KeywordDefinition {
   import BasicAlphabetDefinition._
-  
+
   private[parser] val ABS = MkKeyword("ABS")
   private[parser] val ABSTRACT = MkKeyword("ABSTRACT")
   private[parser] val ACOS = MkKeyword("ACOS")

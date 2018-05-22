@@ -5,4 +5,4 @@ package object syntax {
     final def asStep(implicit encoder: Encoder[A], strictness: EncoderStrictness): Step = encoder(wrapperEncodeable)
     //final def asStepObject(implicit encoder: ObjectEncoder[A]): StepObject = encoder.encodeObject(wrapperEncodeable)
   }
-} 
+}

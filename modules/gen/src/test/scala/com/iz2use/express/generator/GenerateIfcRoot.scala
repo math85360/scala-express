@@ -36,16 +36,16 @@ object GenerateIfcRoot extends TestSuite {
     'IfcRecurrencePattern{
       val entity =
         ast.EntityDeclaration("IfcRecurrencePattern", None, Nil,
-          Seq(
+                                                      Seq(
             ast.ExplicitAttribute(ast.SimpleAttributeName("RecurrenceType"), false, ast.UserDefinedEntityOrType("IfcRecurrenceTypeEnum")),
-            ast.ExplicitAttribute(ast.SimpleAttributeName("DayComponent"), true, ast.SetType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Unknown)), ast.UserDefinedEntityOrType("IfcDayInMonthNumber"))),
-            ast.ExplicitAttribute(ast.SimpleAttributeName("WeekdayComponent"), true, ast.SetType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Unknown)), ast.UserDefinedEntityOrType("IfcDayInWeekNumber"))),
-            ast.ExplicitAttribute(ast.SimpleAttributeName("MonthComponent"), true, ast.SetType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Unknown)), ast.UserDefinedEntityOrType("IfcMonthInYearNumber"))),
+            ast.ExplicitAttribute(ast.SimpleAttributeName("DayComponent"), true, ast.SetType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Indeterminate)), ast.UserDefinedEntityOrType("IfcDayInMonthNumber"))),
+            ast.ExplicitAttribute(ast.SimpleAttributeName("WeekdayComponent"), true, ast.SetType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Indeterminate)), ast.UserDefinedEntityOrType("IfcDayInWeekNumber"))),
+            ast.ExplicitAttribute(ast.SimpleAttributeName("MonthComponent"), true, ast.SetType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Indeterminate)), ast.UserDefinedEntityOrType("IfcMonthInYearNumber"))),
             ast.ExplicitAttribute(ast.SimpleAttributeName("Position"), true, ast.UserDefinedEntityOrType("IfcInteger")),
             ast.ExplicitAttribute(ast.SimpleAttributeName("Interval"), true, ast.UserDefinedEntityOrType("IfcInteger")),
             ast.ExplicitAttribute(ast.SimpleAttributeName("Occurrences"), true, ast.UserDefinedEntityOrType("IfcInteger")),
-            ast.ExplicitAttribute(ast.SimpleAttributeName("TimePeriods"), true, ast.ListType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Unknown)), false, ast.UserDefinedEntityOrType("IfcTimePeriod")))),
-          Nil, Nil, Nil, None)
+            ast.ExplicitAttribute(ast.SimpleAttributeName("TimePeriods"), true, ast.ListType(Some(ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Indeterminate)), false, ast.UserDefinedEntityOrType("IfcTimePeriod")))),
+                                                      Nil, Nil, Nil, None)
 
       val result = Transformer(entity).map(showCode(_))
       val expected = (ScalaDefinition.defaultImports ++ Seq(
@@ -70,13 +70,13 @@ object GenerateIfcRoot extends TestSuite {
     occurrences: Option[IfcInteger] = None,
     timePeriods: Option[List[IfcTimePeriod] Refined NonEmpty] = None) : IfcRecurrencePattern = {
     val _1 = recurrenceType
-    val _2 = dayComponent 
-    val _3 = weekdayComponent 
-    val _4 = monthComponent 
-    val _5 = position 
-    val _6 = interval 
-    val _7 = occurrences 
-    val _8 = timePeriods 
+    val _2 = dayComponent
+    val _3 = weekdayComponent
+    val _4 = monthComponent
+    val _5 = position
+    val _6 = interval
+    val _7 = occurrences
+    val _8 = timePeriods
     new IfcRecurrencePattern {
       val recurrenceType: IfcRecurrenceTypeEnum = _1
       val dayComponent: Option[Set[IfcDayInMonthNumber] Refined NonEmpty] = _2

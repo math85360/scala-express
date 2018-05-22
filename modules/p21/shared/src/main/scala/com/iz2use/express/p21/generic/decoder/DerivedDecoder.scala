@@ -11,7 +11,7 @@ import com.iz2use.express.syntax._
 abstract class DerivedDecoder[A] extends Decoder[A]
 final object DerivedDecoder {
   implicit final def deriveDecoder[A, R](implicit
-    gen: Generic.Aux[A, R],
+      gen: Generic.Aux[A, R],
                                          decode: Lazy[ReprDecoder[R]]): DerivedDecoder[A] = new DerivedDecoder[A] {
     def apply(c: HCursor)(implicit strictness: DecoderStrictness): Decoder.Result[A] = decode.value(c) match {
       case Right(r) => Right(gen.from(r))

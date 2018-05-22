@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 
 trait Literal extends KeywordDefinition {
   import BasicAlphabetDefinition._
-  
+
   private[parser] val binary_literal: P[ast.BinaryLiteral] = P(("%" ~ bit.rep(1).!.map({ v =>
     val len = v.length
     @tailrec

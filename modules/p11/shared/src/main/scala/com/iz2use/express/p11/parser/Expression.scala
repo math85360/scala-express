@@ -24,7 +24,7 @@ trait Expression extends Literal {
     CONST_E.to(ast.BuiltInConstant.E) |
     PI.to(ast.BuiltInConstant.PI) |
     SELF.to(ast.BuiltInConstant.Self) |
-    "?".to(ast.BuiltInConstant.Unknown)) ~/))
+    "?".to(ast.BuiltInConstant.Indeterminate)) ~/))
 
   private val built_in_function: P[ast.BuiltInFunction] = P(((
     ABS.to(ast.BuiltInFunction.Abs) |

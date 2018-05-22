@@ -1,6 +1,7 @@
 package com.iz2use.express.ifc.ifc4
 
 import eu.timepit.refined._
+import eu.timepit.refined.api._
 import eu.timepit.refined.collection._
 import utest._
 import com.iz2use.express.p21._
@@ -8,7 +9,7 @@ import com.iz2use.express.p21.syntax._
 import com.iz2use.express.syntax._
 
 object WallTest extends TestSuite {
-  
+
   val tests = TestSuite {
     implicit val strictness = Strictness.encodeStrictOrConvert
     implicit val db = DatabaseIfc()
@@ -32,15 +33,15 @@ object WallTest extends TestSuite {
         case StepObject(_, Vector(
       }*/
     }
-    implicit val uid = new Recoverable[IfcProject, String, NonEmptyWithFixedSize22, Refined] {
+    /*implicit val uid = new Recoverable[IfcProject, String, NonEmptyWithFixedSize22, Refined] {
       def recover(in: String): Strictness.Result[Refined[String, NonEmptyWithFixedSize22]] = {
         if (in.length > 22) Right(in.take(22))
         else Left("too long !")
       }
-    }
-    val project = IfcProject(IfcGloballyUniqueId.next + "test", name = "IfcProject",
-      unitsInContext = IfcUnitAssignment(
-        Set[RefTo[IfcUnit]](
+    }*/
+    val project = IfcProject(IfcGloballyUniqueId.next + "test", name           = IfcLabel("IfcProject"),
+                                                                unitsInContext = IfcUnitAssignment(
+        Set[IfcUnit](
           lengthUnit)))
     'TestIfcProjectEncoder{
       val encoder = Encoder[IfcProject]
@@ -72,7 +73,7 @@ object WallTest extends TestSuite {
       }
     }
     val masonry = IfcMaterial("Masonry")
-    val layerFinish = IfcMaterialLayer(masonryFinish, 110.0, name = "Finish")
+    val layerFinish = IfcMaterialLayer(masonryFinish, IfcNonNegativeLengthMeasure(110.0), name = IfcLabel("Finish"))
     'TestIfcMaterialLayer{
       Encoder[Option[RefTo[IfcMaterial]]]
       Encoder[IfcNonNegativeLengthMeasure]
@@ -89,12 +90,12 @@ object WallTest extends TestSuite {
         case valid() =>
       }
     }
-    val airInfiltrationBarrier = IfcMaterialLayer(None, 50.0, name = "Air Infiltration Barrier", isVentilated = True)
-    val structure = IfcMaterialLayer(masonry, 110.0, name = "Core")
+    val airInfiltrationBarrier = IfcMaterialLayer(None, IfcNonNegativeLengthMeasure(50.0), name = IfcLabel("Air Infiltration Barrier"), isVentilated = True)
+    val structure = IfcMaterialLayer(masonry, IfcNonNegativeLengthMeasure(110.0), name = IfcLabel("Core"))
     val name = "Double Brick - 270"
-    val materialLayerSet = IfcMaterialLayerSet(List[RefTo[IfcMaterialLayer]](layerFinish, airInfiltrationBarrier, structure), name)
-    val materialLayerSetUsage = IfcMaterialLayerSetUsage(materialLayerSet, IfcLayerSetDirectionEnum.Axis2, IfcDirectionSenseEnum.Positive, 0)
-    val wallType = IfcWallType(IfcGloballyUniqueId.next, name = name, predefinedType = IfcWallTypeEnum.NotDefined)
+    val materialLayerSetUsage = IfcMaterialLayerSetUsage(materialLayerSet, IfcLayerSetDirectionEnum.AXIS2, IfcDirectionSenseEnum.POSITIVE, 0)
+    val materialLayerSet = IfcMaterialLayerSet(List[IfcMaterialLayer](layerFinish, airInfiltrationBarrier, structure), name)
+    val wallType = IfcWallType(IfcGloballyUniqueId.next, name = IfcLabel(name), predefinedType = IfcWallTypeEnum.NOTDEFINED)
     val wallStandardCase = IfcWallStandardCase(
       IfcGloballyUniqueId.next,
       objectPlacement = IfcLocalPlacement(relativePlacement = IfcAxis2Placement3D(IfcCartesianPoint(List(0.0, 0.0, 0.0)))))

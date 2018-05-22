@@ -6,7 +6,9 @@ import scala.annotation.tailrec
 trait Dictionary {
   def add[A](value: A): Unit
 }
-final case class TransformerContext(private val rootPackage: String = "") {
+final case class TransformerContext(
+    private val rootPackage: String                                                                                         = "",
+    transformExpressNode:    (String, Seq[scala.reflect.runtime.universe.Tree]) => Seq[scala.reflect.runtime.universe.Tree] = (a, b) => b) {
   //private var names: Map[String, ast.SchemaBody] = Map.empty
   private var inheritingTraits: Map[String, Seq[String]] = Map.empty
   private var packageStack: List[Seq[String]] = rootPackage match {
@@ -127,28 +129,19 @@ object ScalaDefinition {
     in.map(trsf.impl(_))
   }
 
-  implicit val boundsTransformer: Transformer[ast.Bounds, universe.Tree] = Transformer.instance { implicit ctx =>
-    {
-      case ast.Bounds(ast.IntegerLiteral("1"), ast.BuiltInConstant.Unknown) =>
-        tq"""NonEmpty"""
+  object BoundsTransformer {
+    def unapply(bounds: ast.Bounds): Option[universe.Tree] = bounds match {
       case ast.Bounds(ast.IntegerLiteral(min), ast.IntegerLiteral(max)) =>
-        if (min == max)
-          tq"""Size[Equal[W.${TermName(s"`$min`")}.T]]"""
-        else
-          tq"""And[MinSize[W.${TermName(s"`$min`")}.T], MaxSize[W.${TermName(s"`$max`")}.T]]"""
-      //case ast.Bounds(ast.IntegerLiteral(min), ast.BuiltInConstant.Unknown) =>
-      //tq"""MinSize"""
+        Some(tq"""And[MinSize[W.${TermName(s"`$min`")}.T], MaxSize[W.${TermName(s"`$max`")}.T]]""")
+      case ast.Bounds(ast.IntegerLiteral(min), ast.BuiltInConstant.Indeterminate) =>
+        Some(tq"""MinSize[W.${TermName(s"`$min`")}.T]""")
       case _ =>
-        tq"""NotFound"""
-      /*case ast.Bounds(ast.IntegerLiteral(min), ast.BuiltInConstant.Unknown) =>
-q"""MinSize[W.`$min`.T]"""*/
-      //    case ast.Bounds(ast.IntegerLiteral(min), ast.IntegerLiteral(max))     =>
+        None
     }
   }
   def composeWithBounds(tpe: universe.Tree, boundsOpt: Option[ast.Bounds])(implicit ctx: TransformerContext) = boundsOpt match {
-    case None => tpe
-    case Some(Transformed(tpt)) =>
-      tq"""$tpe Refined $tpt"""
+    //case Some(BoundsTransformer(tpt)) => tq"""$tpe Refined $tpt"""
+    case _ => tpe
   }
 
   def referenceToEntity(wanted: String)(implicit ctx: TransformerContext): universe.Tree = {
@@ -337,17 +330,29 @@ q"""MinSize[W.`$min`.T]"""*/
     val derivedAttributeDefinitions = entity.derivedAttributes.map {
       case Attribute(defName, tpe, expr) => q"""lazy val $defName : $tpe = $expr"""
     }
-    val explicitAttributeDefinitions = entity.attributes.map {
-      case Attribute(defName, optionalType, _) => q"""def $defName : $optionalType"""
-    }
-    val attributeDefinitions = explicitAttributeDefinitions ++ derivedAttributeDefinitions
-    if (isTrait)
-      q"""trait $tname extends ..$parents {..$attributeDefinitions}"""
-    else
-      /*if (attributeDefinitions.isEmpty)
+    val (explicitAttributeDefinitions, explicitAttributes) = entity.attributes.map({
+      case Attribute(defName, optionalType, _) =>
+        (q"""def $defName : $optionalType""", defName)
+    }).unzip
+    val checkEquality = explicitAttributes.foldLeft(q"""(that canEqual this) && super.equals(that)""")((acc, c) => q"$acc && $c==that.$c")
+    val body = explicitAttributeDefinitions ++ derivedAttributeDefinitions ++ Seq(q"""
+    override def hashCode: Int = {
+      scala.runtime.ScalaRunTime._hashCode(this)
+    }""", q"""
+    override def equals(other: Any): Boolean = other match {
+      case that: $tname => $checkEquality
+      case _ => false
+    }""", q"""
+    override def canEqual(that: Any): Boolean = that.isInstanceOf[$tname]
+    """)
+    isTrait match {
+      case true => q"""trait $tname extends ..$parents {..$body}"""
+      case false =>
+        /*if (attributeDefinitions.isEmpty)
               q"""class $tname extends ..$parents {..$attributeDefinitions}"""
             else*/
-      q"""abstract class $tname extends ..$parents {..$attributeDefinitions}"""
+        q"""abstract class $tname extends ..$parents {..$body}"""
+    }
   }
 
   def subtypeCodec(tname: TypeName, subtypes: Seq[String], supertypeCodec: Option[(universe.Tree, universe.Tree)] = None): (universe.Tree, universe.Tree) = {
@@ -426,9 +431,6 @@ q"""MinSize[W.`$min`.T]"""*/
     ..$temps
     new $tname {
     ..$inits
-    def hashCode(): Int = {
-      scala.runtime.ScalaRunTime._hashCode(this)
-    }
     def productArity: Int = ${applyParams.length}
     def productElement(i: Int) : Any = i match {
       case ..$productElements
@@ -438,11 +440,11 @@ q"""MinSize[W.`$min`.T]"""*/
   }""")
       }
       /**
-       * selfCodec :
-       * Encoder: StepObject(${entity.name}, Vector(
-       *   Encoder[argTpe](arg))) || HList with HNil + ::
-       *   Decoder: HList > Decoder
-       */
+        * selfCodec :
+        * Encoder: StepObject(${entity.name}, Vector(
+        *   Encoder[argTpe](arg))) || HList with HNil + ::
+        *   Decoder: HList > Decoder
+        */
       val repr = indexedAllAttributesList flatMap { lst =>
         val hlist = lst.foldRight[universe.Tree](tq"HNil") {
           case ((_, TermName(name), c, _), acc) =>
@@ -553,7 +555,7 @@ q"""MinSize[W.`$min`.T]"""*/
           }
           q""" $lhs ${TermName(operator)} $rhs"""
       }
-      case ast.MultipleOperation(Transformed(lhs), subops) if subops.forall(_._1== ast.OrElseOp) =>
+      case ast.MultipleOperation(Transformed(lhs), subops) if subops.forall(_._1 == ast.OrElseOp) =>
         q""" null """
       case ast.MultipleOperation(Transformed(lhs), subops) =>
         subops.foldLeft[universe.Tree](lhs) {
@@ -572,10 +574,10 @@ q"""MinSize[W.`$min`.T]"""*/
         }
       case ast.AggregateInitializer(Transformed(items)) => q"""Seq(..$items)"""
       case e: ast.BuiltInConstant => e match {
-        case ast.BuiltInConstant.Self    => q"""this"""
-        case ast.BuiltInConstant.PI      => q"""Math.PI"""
-        case ast.BuiltInConstant.E       => q"""Math.E"""
-        case ast.BuiltInConstant.Unknown => q"""unknown"""
+        case ast.BuiltInConstant.Self          => q"""this"""
+        case ast.BuiltInConstant.PI            => q"""Math.PI"""
+        case ast.BuiltInConstant.E             => q"""Math.E"""
+        case ast.BuiltInConstant.Indeterminate => q"""null"""
       }
       case ast.FunctionCallOrEntityConstructor(CollectionConvertableFunction((methodNameStr, convert)), Some(Seq(arg))) =>
         ctx.pushContext
@@ -600,8 +602,11 @@ q"""MinSize[W.`$min`.T]"""*/
         //val source = parameters.foldLeft(qualifiable)((acc, args) => q"""$acc(..$args)""")
         qualifiers.foldLeft(qualifiable) { (source, qualifier) =>
           qualifier match {
-            case ast.IndexQualifier(Transformed(index0), Transformed(index1Opt)) =>
-              index1Opt.foldLeft(q"""$source($index0)""")((acc, index1) => q"""$acc($index1)""")
+            case ast.IndexQualifier(index0, index1Opt) =>
+              (Seq(index0) ++ index1Opt).foldLeft(source) {
+                case (acc, ast.IntegerLiteral("1")) => q"""$acc.head"""
+                case (acc, Transformed(index))      => q"""$acc($index)"""
+              }
             case ast.AttributeQualifier(name) =>
               q"""$source.${TermName(name.lowerFirst)}"""
             case ast.GroupQualifier(name) => source match {
@@ -754,7 +759,7 @@ q"""MinSize[W.`$min`.T]"""*/
         }
 
         val types = schema.body flatMap {
-          case e: ast.TypeDeclaration => Transformer(e)
+          case e: ast.TypeDeclaration => typeTransformer.transform(e)
           case _                      => Nil
         }
 
@@ -779,8 +784,8 @@ q"""MinSize[W.`$min`.T]"""*/
 
         val target = ctx.targetPackage.mkString(".")
         val independentDeclarations = schema.body.collect {
-          case e @ ast.EntityDeclaration(name, _, _, _, _, _, _, _) => ((ctx.targetPackage :+ name).mkString("."), target, entityTransformer.transform(e))
-          case e @ ast.FunctionDeclaration(name, _, _, __, _)       => ((ctx.targetPackage :+ name).mkString("."), target, functionTransformer.transform(e))
+          case e @ ast.EntityDeclaration(name, _, _, _, _, _, _, _) => ((ctx.targetPackage :+ name).mkString("."), target, ctx.transformExpressNode(name, entityTransformer.transform(e)))
+          case e @ ast.FunctionDeclaration(name, _, _, __, _)       => ((ctx.targetPackage :+ name).mkString("."), target, ctx.transformExpressNode(name, functionTransformer.transform(e)))
         }
 
         mainDeclaration +: independentDeclarations
@@ -789,16 +794,16 @@ q"""MinSize[W.`$min`.T]"""*/
   }
 
   /**
-   * Transformer[A, B] {
-   * def addToDictionary(a: A)(implicit context: TransformerContext): Unit = context.register(returnName(a), a)
-   * def transform(a: A)(implicit context: TransformerContext): B = {
-   * context.pushContext
-   * val r = f(context)(a)
-   * context.popContext
-   * r
-   * }
-   * }
-   */
+    * Transformer[A, B] {
+    * def addToDictionary(a: A)(implicit context: TransformerContext): Unit = context.register(returnName(a), a)
+    * def transform(a: A)(implicit context: TransformerContext): B = {
+    * context.pushContext
+    * val r = f(context)(a)
+    * context.popContext
+    * r
+    * }
+    * }
+    */
   implicit val typeTransformer = new Transformer[ast.TypeDeclaration, Seq[universe.Tree]] {
     def addToDictionary(a: ast.TypeDeclaration)(implicit context: TransformerContext): Unit = {
       a.underlyingType match {
@@ -808,10 +813,91 @@ q"""MinSize[W.`$min`.T]"""*/
       }
       context.register(a.name, a)
     }
-    private def getSubtypeAttributes(entityName: String)(implicit context: TransformerContext): Seq[ast.Attribute] = {
-      /*val subtypes = context.subtypeOf(entityName)
-      subtypes.map(getSubtypeAttributes(_))*/
-      Nil
+    private def getSubtypeAttributes(entityName: String)(implicit context: TransformerContext, log: Boolean): Seq[(ast.AttributeName, Option[Boolean], ast.ParameterType)] = {
+      val subtypes = context.subtypeOf(entityName) ++ context.find(entityName).flatMap({
+        case e: ast.EntityDeclaration => e.supertype
+        case _                        => None
+      }).toSeq.flatMap({
+        case ast.AbstractSupertypeDeclaration(Some(ast.SupertypeOneOf(UserDefinedEntities(types @ _*)))) => types
+        case ast.SupertypeRule(ast.SupertypeOneOf(UserDefinedEntities(types @ _*))) => types
+        case _ => Nil
+      })
+      if (log) println(s"$entityName => $subtypes")
+      if (subtypes.isEmpty) Nil
+      else commonFieldsOf(subtypes)
+    }
+    //Equiv[(ast.AttributeName, Option[Boolean], ast.ParameterType)]
+    //private def intersection(fields: Seq[Seq[(ast.AttributeName, Option[Boolean], ast.ParameterType)]])
+    private implicit val attributeNameOrdering = Ordering.by { (in: ast.AttributeName) =>
+      val TermName(name) = getAttributeName(in)
+      name
+    }
+    private implicit val attributeOrdering = Ordering.by((in: (ast.AttributeName, Option[Boolean], ast.ParameterType)) => in._1)
+    private implicit val parameterTypeEquiv: Equiv[ast.AggregationTypeLevel] = Equiv.fromFunction[ast.AggregationTypeLevel] {
+      case (ast.ArrayType(_, _, _, ofA), ast.ArrayType(_, _, _, ofB)) => parameterTypeEquiv.equiv(ofA, ofB)
+      case (ast.BagType(_, ofA), ast.BagType(_, ofB)) => parameterTypeEquiv.equiv(ofA, ofB)
+      case (ast.ListType(_, _, ofA), ast.ListType(_, _, ofB)) => parameterTypeEquiv.equiv(ofA, ofB)
+      case (ast.SetType(_, ofA), ast.SetType(_, ofB)) => parameterTypeEquiv.equiv(ofA, ofB)
+      case (a, b) => a == b
+    }
+    implicit def attributeEquiv(
+        a: (ast.AttributeName, Option[Boolean], ast.ParameterType),
+        b: (ast.AttributeName, Option[Boolean], ast.ParameterType)) = {
+      val (nameA, optA, paramA) = a
+      val (nameB, optB, paramB) = b
+      ((nameA == nameB) &&
+        parameterTypeEquiv.equiv(paramA, paramB) &&
+        !optA.zip(optB).exists({ case (a, b) => a != b })) match {
+          case true  => Some((nameA, optA orElse optB, paramA))
+          case false => None
+        }
+    }
+    private def intersection[A](a: Seq[A], b: Seq[A])(implicit reduceOpt: Function2[A, A, Option[A]], ord: Ordering[A]): Seq[A] = {
+      @tailrec
+      def loop(result: Seq[A], a: Seq[A], b: Seq[A]): Seq[A] = a match {
+        case Nil => result
+        case Seq(head, tail @ _*) =>
+          val bb = b.dropWhile(ord.lt(_, head))
+          bb match {
+            case Nil => result
+            case Seq(first, rest @ _*) =>
+              reduceOpt(head, bb.head) match {
+                case Some(a) => loop(result :+ a, tail, rest)
+                case _       => loop(result, tail, bb)
+              }
+          }
+      }
+      loop(Nil, a.sorted, b.sorted)
+    }
+    private def commonFieldsOf(items: Seq[String])(implicit context: TransformerContext, log: Boolean): Seq[(ast.AttributeName, Option[Boolean], ast.ParameterType)] = {
+      val allEntities = items.flatMap(entityName => context.find(entityName).toSeq)
+      allEntities.forall({
+        case e: ast.EntityDeclaration => true
+        case _                        => false
+      }) match {
+        case false =>
+          Nil
+        case true =>
+          val allFields = for {
+            mainEntity <- allEntities.collect({
+              case e: ast.EntityDeclaration => e
+            }).toSeq
+          } yield {
+            val fields = getSubtypeAttributes(mainEntity.name) ++ (for {
+              ent <- getParentEntities(mainEntity) :+ mainEntity
+              attribute <- ent.attributes ++ ent.derivedAttributes
+            } yield (attribute match {
+              case ast.ExplicitAttribute(name, opt, tpe) =>
+                (name, Some(opt), tpe)
+              case ast.DerivedAttribute(name, tpe, _) =>
+                (name, None, tpe)
+            }))
+            if (log) println("  " + fields.mkString("; "))
+            fields.distinct
+          }
+          if (allFields.isEmpty) Nil
+          else allFields.reduce(intersection(_, _))
+      }
     }
     def impl(tpe: ast.TypeDeclaration)(implicit context: TransformerContext): Seq[universe.Tree] = {
       val name = TypeName(tpe.name)
@@ -820,27 +906,12 @@ q"""MinSize[W.`$min`.T]"""*/
         case ast.SelectType(extensible, from) =>
           from match {
             case Some(Left(items)) =>
-              val allFields = for {
-                entityName <- items
-              } yield {
-                val fields = for {
-                  mainEntity <- context.find(entityName).collect({
-                    case e: ast.EntityDeclaration => e
-                  }).toSeq
-                  entity <- getParentEntities(mainEntity) :+ mainEntity
-                  attribute <- entity.attributes ++ entity.derivedAttributes ++ getSubtypeAttributes(entityName)
-                } yield (attribute match {
-                  case ast.ExplicitAttribute(name, opt, tpe) =>
-                    (name, Some(opt), tpe)
-                  case ast.DerivedAttribute(name, tpe, _) =>
-                    (name, None, tpe)
-                })
-                fields.distinct
-              }
-              val commonFields = allFields.reduce(_ intersect _).map {
+              //println(s"  >> ${tpe.name}")
+              val commonFields = commonFieldsOf(items)(context, tpe.name == "IfcCurveOnSurface").map {
                 case Attribute((name, tpe)) =>
                   q"""def $name: $tpe"""
               }
+              //println(s"  << ${tpe.name}")
               //val tpt = items.foldRight[universe.Tree](tq"CNil")((c, acc) => tq"${TypeName(c)} :+: $acc")
               val (encoder, decoder) = subtypeCodec(name, items, None)
               Seq(
@@ -882,7 +953,7 @@ q"""MinSize[W.`$min`.T]"""*/
 ..$clsDefs
 }""", enum)
             case false => Seq(q"""sealed abstract class $name extends ExpressEnumeration{
-..$clsDefs 
+..$clsDefs
 }""", enum)
           }
         /*case e: ast.SimpleType =>
@@ -924,11 +995,11 @@ implicit def ${TermName(s"from${tpe.name}")}(value: $name): $underlying = $toUnd
   }
 
   /**
-   * abstract class Transformer[-A, B] {
-   * def addToDictionary(a: A)(implicit context: TransformerContext): Unit
-   * def transform(a: A)(implicit context: TransformerContext): B
-   * }
-   */
+    * abstract class Transformer[-A, B] {
+    * def addToDictionary(a: A)(implicit context: TransformerContext): Unit
+    * def transform(a: A)(implicit context: TransformerContext): B
+    * }
+    */
   //def emptyTransformer[A](a: A)(pf: A => String) =
   class EmptyTransformer(name: String) extends Transformer[Any, Seq[universe.Tree]] {
     def addToDictionary(a: Any)(implicit context: TransformerContext): Unit = {

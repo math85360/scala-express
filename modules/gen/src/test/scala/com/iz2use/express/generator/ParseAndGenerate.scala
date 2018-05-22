@@ -17,9 +17,33 @@ object ParseAndGenerate extends TestSuite {
 
     val Parsed.Success(Seq(schema), _) = Parser.root.parse(source)
 
-    implicit val ctx = TransformerContext()
+    implicit val ctx = TransformerContext(
+      transformExpressNode = (name: String, input: Seq[universe.Tree]) => {
+        import scala.reflect.runtime.universe.{ Transformer => _, _ }
+        name match {
+          case "IfcNormalise" =>
+            input map {
+              case q"""object $name extends ..$parents { ..$body }""" =>
+                q"""object $name extends ..$parents {
+def apply[I <: IfcVectorOrDirection](arg: Option[I]): I = null.asInstanceOf[I]
+}"""
+              case other => other
+            }
+          case "IfcCompositeCurve" =>
+            import ScalaDefinition.universe._
+            object transformer extends Transformer {
+              override def transform(tree: Tree): Tree = tree match {
+                case q"""lazy val closedCurve: $tpt = $value""" => q""""""
+                case _ => super.transform(tree)
+              }
+            }
+            input.map(transformer.transform)
+          case _ => input
+        }
+      }
+    )
     ctx.withPackage("com.iz2use.express.ifc") {
-      for ((filename, pkg,  tree) <- Transformer(schema) if tree.nonEmpty) {
+      for ((filename, pkg, tree) <- Transformer(schema) if tree.nonEmpty) {
         val code = tree.map(showCode(_)).mkString("\n")
         val target = s"modules/ifc/shared/src/main/scala/${filename.replace('.', '/')}.scala"
         val parentFolder = new File(target.split('/').init.mkString("/"))
