@@ -18,7 +18,7 @@ object WallTest extends TestSuite {
     'TestIfcBuilding{
       //assert(db.counter == 2)
     }
-    val lengthUnit = IfcSIUnit(IfcUnitEnum.LengthUnit, IfcSIPrefix.Milli, IfcSIUnitName.Metre)
+    val lengthUnit = IfcSIUnit(IfcUnitEnum.LENGTHUNIT, IfcSIPrefix.MILLI, IfcSIUnitName.METRE)
     'IfcSIUnit{
       /*Encoder[IfcUnitEnum]
       Encoder[Option[IfcSIPrefix]]

@@ -35,41 +35,25 @@ package object syntax {
   trait ExpressFunction extends ExpressRoot
   trait ExpressRule extends ExpressRoot
   trait ExpressType extends ExpressRoot
+  Nil
 
-  object sizeOf {
-    def apply[C](c: C): Int = 0
+  def fromOptionRefinedTraversable[T, C[_], P](in: Option[Refined[C[T], P]], default: => C[T]): C[T] = in match {
+    case Some(Refined(v)) => v
+    case None             => default
   }
-
-  object hiIndex {
-    def apply[C](c: C): Int = 0
-  }
-
-  object loIndex {
-    def apply[C](c: C): Int = 0
-  }
-
-  sealed trait Source[A] {
-    type Item
-    type Repr
-    def apply(predicate: Item => Boolean): Repr
-  }
-  object Source {
-    //type Aux[A, B] = Source[A] { type Repr = B }
-    /*private final def instance[A, B] = new Source[A] {
-      type Repr = B
-    }*/
-    implicit final def optionRefinedList[A, P]: Source[Option[Refined[List[A], P]]] = new Source[Option[Refined[List[A], P]]] {
-      type Item = A
-      type Repr = List[A]
-      def apply(predicate: Item => Boolean) :Repr = List[A]()
-    }
-    //implicit final val
-    //implicit def apply[A](implicit src: Source[A]): Aux[A, src.Repr] = src
-  }
-  object query {
-    //def apply[S, T](source: S)(predicate: T => Boolean)(implicit ev: Source.Aux[S, T]): T = null.asInstanceOf[T]
-    def apply[S: Source](source: S): Source[S] = implicitly[Source[S]]
-  }
+  implicit def fromOptionRefinedList[T, P](in: Option[Refined[List[T], P]]): List[T] =
+    fromOptionRefinedTraversable[T, List, P](in, Nil)
+  implicit def fromRefinedArray[T, P](in: Refined[Array[T], P]): Array[T] =
+    in.value
+  implicit def fromRefinedList[T, P](in: Refined[List[T], P]): List[T] =
+    in.value
+  implicit def fromRefinedSeq[T, P](in: Refined[Seq[T], P]): Seq[T] =
+    in.value
+  implicit def fromRefinedSet[T, P](in: Refined[Set[T], P]): Set[T] =
+    in.value
+  implicit def fromOptionBoolean(in: Option[Boolean]): Boolean = in.getOrElse(false)
+  implicit def fromOptionEntity[T <: ExpressEntity](in: Option[T]): T = in.get
+  //implicit def fromOption[T](in: Option[T]): T
 
   /*object nvl {
     def apply[C](a: Option[C], b: C): C = a.getOrElse(b)
