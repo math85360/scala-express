@@ -49,7 +49,7 @@ END_ENTITY;""")
             SimpleAttributeName(
               "DayComponent"),
             true,
-            SetType(Some(Bounds(IntegerLiteral("1"), BuiltInConstant.Unknown)), UserDefinedEntityOrType("IfcDayInMonthNumber"))),
+            SetType(Some(Bounds(IntegerLiteral("1"), BuiltInConstant.Indeterminate)), UserDefinedEntityOrType("IfcDayInMonthNumber"))),
           _*), _, _, _, _), _) =>
       }
     }
@@ -75,7 +75,7 @@ END_TYPE;
 TYPE IfcBoolean = BOOLEAN;
 END_TYPE;
 
-TYPE IfcBoxAlignment = IfcLabel; 
+TYPE IfcBoxAlignment = IfcLabel;
  WHERE
 	WR1 : SELF IN ['top-left', 'top-middle', 'top-right', 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-middle', 'bottom-right'];
 END_TYPE;

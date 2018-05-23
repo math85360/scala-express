@@ -9,14 +9,6 @@ import shapeless.ops.record.RemoveAll
 import scala.collection.immutable.Set
 import com.iz2use.express.syntax._
 
-case class EncodingContext(strictness: EncoderStrictness, topLevel: Boolean) {
-  def downLevel: EncodingContext = if (topLevel) this.copy(topLevel = false) else this
-}
-object EncodingContext {
-  implicit def default(implicit strictness: EncoderStrictness): EncodingContext =
-    EncodingContext(strictness, true)
-}
-
 trait Encoder[A] { self =>
   def apply(a: A)(implicit context: EncodingContext): Step
 

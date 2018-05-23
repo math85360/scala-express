@@ -11,7 +11,7 @@ trait CommonIfcBase {
   private[this] val base64 = "ABCDEFGIHJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$"
   private[this] val base64mask = 0x3F
   implicit class RichIfcGloballyUniqueId(root: IfcGloballyUniqueId.type) {
-    def next(implicit db: DatabaseIfc): IfcGloballyUniqueId = {
+    def next: IfcGloballyUniqueId = {
       def c(l: Long, pos: Int): Char = {
         base64.charAt((base64mask & ((l.>>(pos * 6)).toInt)))
       }
@@ -27,9 +27,6 @@ trait CommonIfcBase {
     }
   }
 
-  implicit def toRef[A <: ExpressEntity](a: A)(implicit db: DatabaseIfc): RefTo[A] =
-    db.insert(a)
-
   implicit def toRefined[A, P](a: A)(
       implicit
       v: Validate[A, P]): A Refined P =
@@ -44,6 +41,4 @@ trait CommonIfcBase {
     Some(toRefined(a))
 
   implicit def toOption[A](a: A): Option[A] = Some(a)
-
-  implicit def toOptionRefTo[A <: ExpressEntity](a: A)(implicit db: DatabaseIfc): Option[RefTo[A]] = Some(toRef(a))
 }

@@ -2,6 +2,8 @@ package com.iz2use.express.p21.parser
 
 import com.iz2use.express.syntax._
 import com.iz2use.express.p21._
+import com.iz2use.express.p21.generic.decoder._
+import com.iz2use.express.p21.generic.encoder._
 import eu.timepit.refined._
 import eu.timepit.refined.api._
 import eu.timepit.refined.boolean._
@@ -15,6 +17,8 @@ import scala.util.Right
 
 object SmallSampleTests extends TestSuite {
   val tests = TestSuite {
+    implicit val encodeStrictness = Strictness.encodeStrict
+    implicit val decodeStrictness = Strictness.decodeStrict
     def t[A](todo: A, expected: String)(implicit enc: Encoder[A], dec: Decoder[A]) = {
       val result = Encoder[A].apply(todo)
       assert(result.toString() == expected)
@@ -39,9 +43,9 @@ object SmallSampleTests extends TestSuite {
         def endTime: IfcTime
       }
       object IfcTimePeriod {
-        implicit val encoder: Encoder[IfcTimePeriod] = ObjectEncoder.toHList("IfcTimePeriod")((c: IfcTimePeriod) =>
+        implicit val encoder: Encoder[IfcTimePeriod] = ReferenceOrObjectEncoder("IfcTimePeriod")((c: IfcTimePeriod) =>
           c.startTime :: c.endTime :: HNil)
-        implicit val decoder: Decoder[IfcTimePeriod] = Decoder[Repr].map(r => IfcTimePeriod(r.at(0), r.at(1)))
+        implicit val decoder: Decoder[IfcTimePeriod] = ReprDecoder[Repr].map(r => IfcTimePeriod(r.at(0), r.at(1)))
         def apply(startTime: IfcTime, endTime: IfcTime): IfcTimePeriod = {
           val _1 = startTime
           val _2 = endTime
@@ -54,7 +58,7 @@ object SmallSampleTests extends TestSuite {
       }
       val v1 = IfcTimePeriod("start", "end")
       val encoded = Encoder[IfcTimePeriod].apply(v1)
-      assert(encoded.toString() == "('start','end')")
+      assert(encoded.toString() == "IFCTIMEPERIOD('start','end')")
 
       val decoded = Decoder[IfcTimePeriod].apply(new cursor.TopCursor(encoded)(null, null))
       val Right(v2) = decoded

@@ -8,3 +8,4 @@
 **/.ensime
 .ensime_cache
 modules/ifc/shared/src/main/scala/com/iz2use/express/ifc/ifc4
+pc.stdout.log

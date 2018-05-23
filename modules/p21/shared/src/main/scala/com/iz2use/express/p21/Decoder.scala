@@ -222,6 +222,19 @@ final object Decoder extends MidPriorityDecoder {
       }
     }
   }
+  implicit final def decodeSome[A](implicit d: Decoder[A]): Decoder[Some[A]] = new Decoder[Some[A]] {
+    def apply(c: HCursor)(implicit strictness: DecoderStrictness): Result[Some[A]] = d(c) match {
+      case Right(a) => Right(Some(a))
+      case Left(df) => Left(DecodingFailure("Some", c.history))
+    }
+  }
+
+  implicit final def decodeNone: Decoder[None.type] = new Decoder[None.type] {
+    def apply(c: HCursor)(implicit strictness: DecoderStrictness): Result[None.type] = c.value match {
+      case StepNull => Right(None)
+      case _        => Left(DecodingFailure("None", c.history))
+    }
+  }
 
   implicit class RichDecoder[A](da: Decoder[A]) {
     def |[B >: A, C <: B](db: => Decoder[C]): Decoder[B] = new Decoder[B] {
