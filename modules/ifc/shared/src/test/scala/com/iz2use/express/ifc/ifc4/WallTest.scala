@@ -43,9 +43,11 @@ object WallTest extends TestSuite {
                              unitsInContext = IfcUnitAssignment(
         Set[IfcUnit](
           lengthUnit)))
+    db.insert(project)
     'TestIfcProjectEncoder{
       val encoder = Encoder[IfcProject]
       assert(encoder ne null)
+      println(encoder)
       val v = encoder(project)
       assertMatch(v) {
         case StepObject(_, Vector(StepString(id), StepNull, StepString("IfcProject"), StepNull, StepNull, StepNull, StepNull, StepNull, StepReference(unit))) =>

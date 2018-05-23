@@ -472,7 +472,7 @@ object ScalaDefinition {
         } yield q"r.at(${idx - 1})"
         //val unapplyDecode = decodeArgs.foldRight[universe.Tree](q"HNil") { case (c, acc) => pq"""$c :: $acc""" }
         val name = q"""${entity.name}"""
-        (q"""ReprObjectEncoder[Repr].contramap{ (c:$tname) => $encodeArgs }""",
+        (q"""ReferenceOrObjectEncoder[$tname, Repr]($name) { (c:$tname) => $encodeArgs }""",
           q"""ReprDecoder[Repr].map { r => $compName(..$decodeArgs) }""")
       }
       def codec = {

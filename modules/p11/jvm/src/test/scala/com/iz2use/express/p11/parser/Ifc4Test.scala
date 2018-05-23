@@ -16,7 +16,7 @@ object Ifc4Test extends TestSuite {
       case _ =>
     }
     assertMatch(parsed) {
-      case Parsed.Success(Seq(Schema(_, _, _)),_) =>
+      case Parsed.Success(Seq(Schema(_, _, _)), _) =>
     }
   }
 }
